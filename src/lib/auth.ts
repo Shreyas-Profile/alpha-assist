@@ -3,24 +3,19 @@
 // Auth.js expects a single `auth.ts` that exports { handlers, auth, signIn, signOut }.
 // The API route (`src/app/api/auth/[...nextauth]/route.ts`) re-exports `handlers`.
 // Server code imports `auth` to read the current session; client code uses signIn/signOut.
+//
+// Note: we're running JWT-only for M1 — the session lives in a cookie, not the DB.
+// The Prisma adapter is intentionally not wired up yet because Prisma 7 is newer than
+// what @auth/prisma-adapter currently supports. When we need to persist conversation
+// history (M2), we either downgrade Prisma or wait for the adapter to catch up.
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-
-import { prisma } from "@/lib/db";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
-  session: {
-    // JWT sessions: no DB roundtrip per request. Simpler for now; can switch to
-    // strategy: "database" later if we need server-side revocation.
-    strategy: "jwt",
-  },
+  session: { strategy: "jwt" },
   providers: [
     Google({
-      // AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET are the Auth.js v5 conventional names,
-      // and Auth.js reads them automatically. Kept here explicit for clarity.
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
     }),
