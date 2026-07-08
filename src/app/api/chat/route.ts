@@ -12,7 +12,7 @@
 //      knows what to navigate to on first send.
 
 import { NextResponse } from "next/server";
-import { convertToModelMessages, streamText, type UIMessage } from "ai";
+import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from "ai";
 
 import { auth } from "@/lib/auth";
 import {
@@ -21,6 +21,7 @@ import {
   getContextMessages,
 } from "@/lib/chat";
 import { CHAT_MODEL, SYSTEM_PROMPT, openrouter } from "@/lib/openrouter";
+import { skills } from "@/lib/skills";
 
 export const runtime = "nodejs"; // Prisma + better-sqlite3 need Node runtime, not Edge.
 export const maxDuration = 60;
@@ -78,8 +79,17 @@ export async function POST(req: Request) {
     model: openrouter.chat(CHAT_MODEL),
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(historyAsUiMessages),
+    // Skills the LLM can invoke via tool-calling. Each returns data the model
+    // then reads in a follow-up step.
+    tools: skills,
+    // Allow up to 5 model steps per turn — the LLM may call a tool, read the
+    // result, and reply. Without this it'd stop after one step.
+    stopWhen: stepCountIs(5),
     onFinish: async ({ text }) => {
-      await appendMessage(conversationId!, "assistant", text);
+      // Only the final assistant text is persisted. Tool calls and their
+      // results are transient — they're visible during streaming but not
+      // stored, so refreshing shows the answer, not the plumbing.
+      if (text) await appendMessage(conversationId!, "assistant", text);
     },
   });
 

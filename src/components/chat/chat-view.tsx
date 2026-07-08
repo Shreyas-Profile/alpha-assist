@@ -87,7 +87,7 @@ export function ChatView({
                 <ChatMessage
                   key={m.id}
                   role={m.role as "user" | "assistant" | "system"}
-                  content={extractText(m)}
+                  parts={m.parts}
                   avatarUrl={userImage}
                   userName={userName}
                 />
@@ -109,9 +109,3 @@ export function ChatView({
   );
 }
 
-function extractText(message: UIMessage): string {
-  return message.parts
-    .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    .map((p) => p.text)
-    .join("");
-}
