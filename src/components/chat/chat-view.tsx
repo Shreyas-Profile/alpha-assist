@@ -6,6 +6,11 @@
 //     capture it in a custom fetch and router.replace() into /chat/[id].
 //   - Existing chat: `conversationId` is set. Server keeps appending messages
 //     to that conversation.
+//
+// Client-side tool execution: any tool whose name starts with `browser_` has
+// no `execute` on the server. Its tool-call streams here; we forward the call
+// to the chrome-agent extension and feed the result back to the LLM via
+// addToolResult so it can decide what to do next.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -13,6 +18,7 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import { useChat } from "@ai-sdk/react";
 import { ChatMessage } from "@/components/chat/message";
 import { Composer } from "@/components/chat/composer";
+import { callExtension } from "@/lib/browser-bridge";
 
 type Props = {
   conversationId?: string;
@@ -31,7 +37,7 @@ export function ChatView({
   const [input, setInput] = useState("");
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
 
-  const { messages, sendMessage, status } = useChat({
+  const chat = useChat({
     messages: initialMessages,
     transport: new DefaultChatTransport({
       api: "/api/chat",
@@ -42,15 +48,41 @@ export function ChatView({
         if (!conversationId) {
           const newId = res.headers.get("x-conversation-id");
           if (newId) {
-            // Fire after this microtask so React has a chance to start applying
-            // the streamed messages before we navigate.
             queueMicrotask(() => router.replace(`/chat/${newId}`));
           }
         }
         return res;
       },
     }),
+    // Client-side tool execution — browser_* tools have no server-side
+    // execute, so we run them here by forwarding to the extension.
+    async onToolCall({ toolCall }) {
+      const tc = toolCall as {
+        toolCallId: string;
+        toolName: string;
+        input?: unknown;
+        args?: unknown;
+      };
+      if (!tc.toolName?.startsWith("browser_")) return;
+      const input = (tc.input ?? tc.args) ?? {};
+      try {
+        const output = await callExtension(tc.toolName, input);
+        chat.addToolResult({
+          tool: tc.toolName,
+          toolCallId: tc.toolCallId,
+          output,
+        } as Parameters<typeof chat.addToolResult>[0]);
+      } catch (err) {
+        chat.addToolResult({
+          tool: tc.toolName,
+          toolCallId: tc.toolCallId,
+          output: { error: err instanceof Error ? err.message : String(err) },
+        } as Parameters<typeof chat.addToolResult>[0]);
+      }
+    },
   });
+
+  const { messages, sendMessage, status } = chat;
 
   // Auto-scroll to the bottom on new content.
   useEffect(() => {
@@ -108,4 +140,3 @@ export function ChatView({
     </div>
   );
 }
-
