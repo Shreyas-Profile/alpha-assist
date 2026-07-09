@@ -38,21 +38,23 @@ export const browserSnapshot = tool({
 
 export const browserClick = tool({
   description:
-    "Click an element. Pass `uid` from browser_snapshot (preferred) OR a CSS `selector` (fallback).",
+    "Click an element. Pass `uid` from browser_snapshot (preferred) OR a CSS `selector` (fallback). Set `trusted: true` to send a real, browser-trusted click via the chrome.debugger API — REQUIRED for triggering Chrome's password autofill (focusing a login field) or for sites that gate behaviour on isTrusted events. While a trusted click is in flight, Chrome shows a 'DevTools is debugging this tab' banner for ~500ms.",
   inputSchema: z.object({
     uid: z.string().optional(),
     selector: z.string().optional(),
+    trusted: z.boolean().optional(),
   }),
 });
 
 export const browserType = tool({
   description:
-    "Focus an input and type text. Pass `uid` (preferred) or `selector`. Set `press_enter: true` if hitting Enter after the text should submit the field.",
+    "Focus an input and type text. Pass `uid` (preferred) or `selector`. Set `press_enter: true` if hitting Enter after the text should submit the field. Set `trusted: true` to send trusted keystrokes via chrome.debugger — needed on some banking/anti-bot sites, and to bypass anti-paste checks.",
   inputSchema: z.object({
     uid: z.string().optional(),
     selector: z.string().optional(),
     text: z.string(),
     press_enter: z.boolean().optional(),
+    trusted: z.boolean().optional(),
   }),
 });
 
