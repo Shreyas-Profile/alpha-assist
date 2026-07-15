@@ -54,6 +54,16 @@ const SKILLS: SkillEntry[] = [
     needs: "Chrome",
     publisher: "Globalion (Shreyas)",
   },
+  {
+    id: "reminders",
+    name: "Reminders",
+    category: "Notifications · WhatsApp",
+    description:
+      "Ask your assistant to remind you about anything — meetings, meds, birthdays, deadlines. Reminders arrive as WhatsApp messages when due.",
+    price: "Free",
+    needs: "WhatsApp sign-in (or your phone number)",
+    publisher: "Paperloft Assist",
+  },
 ];
 
 export default async function SkillsPage() {

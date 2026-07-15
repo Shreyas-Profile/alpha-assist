@@ -17,7 +17,7 @@ import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from 
 import { auth } from "@/lib/auth";
 import { appendMessage, createConversation } from "@/lib/chat";
 import { CHAT_MODEL, SYSTEM_PROMPT, openrouter } from "@/lib/openrouter";
-import { skills } from "@/lib/skills";
+import { skills, makeUserScopedSkills } from "@/lib/skills";
 import { makeLinkedInSkill } from "@/lib/skills/linkedin-post";
 
 export const runtime = "nodejs"; // Prisma + better-sqlite3 need Node runtime, not Edge.
@@ -85,6 +85,7 @@ export async function POST(req: Request) {
     // it can capture the authed user's email for token lookup.
     tools: {
       ...skills,
+      ...makeUserScopedSkills(email),
       linkedin_post: makeLinkedInSkill(email),
     },
     // Cap per-server-round steps. The full loop is bounded by the client's

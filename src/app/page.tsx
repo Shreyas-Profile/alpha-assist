@@ -16,7 +16,7 @@ import { redirect } from "next/navigation";
 
 export default async function LandingPage() {
   const session = await auth();
-  if (session?.user) redirect("/home");
+  if (session?.user) redirect("/chat");
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -59,7 +59,7 @@ function Nav() {
           <form
             action={async () => {
               "use server";
-              await signIn("google", { redirectTo: "/home" });
+              await signIn("google", { redirectTo: "/chat" });
             }}
           >
             <button
@@ -72,7 +72,7 @@ function Nav() {
           <form
             action={async () => {
               "use server";
-              await signIn("google", { redirectTo: "/home" });
+              await signIn("google", { redirectTo: "/chat" });
             }}
           >
             <button
@@ -112,7 +112,7 @@ function Hero() {
         <form
           action={async () => {
             "use server";
-            await signIn("google", { redirectTo: "/home" });
+            await signIn("google", { redirectTo: "/chat" });
           }}
         >
           <button
@@ -126,7 +126,7 @@ function Hero() {
         <form
           action={async () => {
             "use server";
-            await signIn("google", { redirectTo: "/home" });
+            await signIn("google", { redirectTo: "/chat" });
           }}
         >
           <button
@@ -336,7 +336,7 @@ function Pricing() {
               <form
                 action={async () => {
                   "use server";
-                  await signIn("google", { redirectTo: "/home" });
+                  await signIn("google", { redirectTo: "/chat" });
                 }}
                 className="mt-6"
               >

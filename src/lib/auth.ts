@@ -1,16 +1,20 @@
-// Auth.js (NextAuth v5) configuration — single source of truth.
+// Auth.js (NextAuth v5) configuration.
 //
-// Auth.js expects a single `auth.ts` that exports { handlers, auth, signIn, signOut }.
-// The API route (`src/app/api/auth/[...nextauth]/route.ts`) re-exports `handlers`.
-// Server code imports `auth` to read the current session; client code uses signIn/signOut.
-//
-// Note: we're running JWT-only for M1 — the session lives in a cookie, not the DB.
-// The Prisma adapter is intentionally not wired up yet because Prisma 7 is newer than
-// what @auth/prisma-adapter currently supports. When we need to persist conversation
-// history (M2), we either downgrade Prisma or wait for the adapter to catch up.
+// JWT-only sessions (no adapter). On first sign-in, we auto-enable the skill
+// that matches the provider — Google → browser_mcp, Telegram → telegram_mcp,
+// WhatsApp → reminders. The user can toggle skills freely from /skills afterwards.
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import { enableSkill } from "./enabled-skills";
+
+// Map provider IDs to the skill they should auto-enable on first sign-in.
+// This is the "sign in with X" → "X skill enabled" onboarding rule.
+const PROVIDER_AUTO_ENABLE: Record<string, string> = {
+  google: "browser_mcp",
+  telegram: "telegram_mcp",
+  whatsapp: "reminders",
+};
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
@@ -19,7 +23,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
     }),
+    // TODO: add Telegram Login Widget provider once BotFather bot is set up.
+    // TODO: add WhatsApp OTP provider once wasenderapi key is provisioned.
   ],
+  events: {
+    async signIn({ user, account }) {
+      // Fire-and-forget auto-enable of the matching skill.
+      const skillId = account?.provider ? PROVIDER_AUTO_ENABLE[account.provider] : undefined;
+      if (skillId && user.email) {
+        enableSkill(user.email, skillId).catch(() => undefined);
+      }
+    },
+  },
   pages: {
     signIn: "/signin",
   },

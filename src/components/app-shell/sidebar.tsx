@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, MessageSquare, Sparkles, Settings, LogOut } from "lucide-react";
+import { MessageSquare, Sparkles, Settings, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,6 @@ type NavItem = {
 };
 
 const PRIMARY: NavItem[] = [
-  { href: "/home", label: "Home", icon: Home },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/skills", label: "Skills", icon: Sparkles },
 ];
@@ -39,7 +38,7 @@ export function Sidebar({
   return (
     <aside className="hidden md:flex md:w-56 shrink-0 border-r border-border/50 bg-foreground/[0.02] flex-col h-screen sticky top-0">
       <div className="px-4 py-4 border-b border-border/50">
-        <Link href="/home" className="flex items-center gap-2">
+        <Link href="/chat" className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md bg-foreground text-background flex items-center justify-center text-sm font-bold">
             P
           </div>
@@ -114,7 +113,6 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 function isActive(pathname: string, href: string): boolean {
-  if (href === "/home") return pathname === "/home";
   if (href === "/chat") return pathname === "/chat" || pathname.startsWith("/chat/");
   return pathname.startsWith(href);
 }

@@ -17,7 +17,9 @@ import {
   browserType,
   browserReadPage,
 } from "./browser-primitives";
+import { makeRemindersSkill } from "./reminders";
 
+// Provider-agnostic base skills (no per-user context needed).
 export const skills = {
   // Server-side
   find_opportunities: findOpportunitiesTool,
@@ -29,3 +31,12 @@ export const skills = {
   browser_type: browserType,
   browser_read_page: browserReadPage,
 } as const;
+
+// Per-user skills that need the authed userEmail (so the LLM can bind
+// the tool to the right owner). The chat route composes these into the
+// full tool set at request time.
+export function makeUserScopedSkills(userEmail: string) {
+  return {
+    set_reminder: makeRemindersSkill(userEmail),
+  } as const;
+}

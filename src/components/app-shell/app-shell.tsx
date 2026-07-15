@@ -1,5 +1,5 @@
 // Layout wrapper for authed pages. Renders the sidebar on the left and the
-// page content on the right. Used by /home, /chat, /skills, /settings.
+// page content on the right. Used by /chat, /skills, /settings.
 
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";

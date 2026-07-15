@@ -17,7 +17,12 @@ export type TelegramIntegration = {
   chatId: number;
 };
 
-export type Integration = LinkedInIntegration | TelegramIntegration;
+export type WhatsAppIntegration = {
+  provider: "whatsapp";
+  phone: string; // E.164 format, e.g. "+447700900123"
+};
+
+export type Integration = LinkedInIntegration | TelegramIntegration | WhatsAppIntegration;
 
 export async function saveIntegration(
   userEmail: string,

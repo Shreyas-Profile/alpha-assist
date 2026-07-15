@@ -1,24 +1,16 @@
-// User settings. Right now: profile info + plan info + connected accounts
-// placeholders (LinkedIn/Google Calendar/etc. wire up as they ship).
+// User settings. Profile + Plan + Danger zone. The old "Connected accounts"
+// section was removed — per-skill enablement is done from /skills instead.
 
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { isAdmin } from "@/lib/admin";
-import { getIntegration } from "@/lib/integrations";
 
-export default async function SettingsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ linkedin_connected?: string; linkedin_error?: string }>;
-}) {
+export default async function SettingsPage() {
   const session = await auth();
   const user = session?.user;
   if (!user?.email) redirect("/signin");
   const admin = isAdmin(user.email);
-  const sp = await searchParams;
-  const linkedIn = await getIntegration(user.email, "linkedin");
-  const linkedInConnected = !!linkedIn && linkedIn.expiresAt > Date.now();
 
   return (
     <AppShell>
@@ -81,39 +73,6 @@ export default async function SettingsPage({
             )}
           </section>
 
-          {/* Connected accounts */}
-          <section className="p-6 rounded-xl border border-border bg-foreground/[0.02]">
-            <h2 className="font-semibold mb-4">Connected accounts</h2>
-
-            {sp.linkedin_connected ? (
-              <div className="mb-4 p-3 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-sm text-emerald-700 dark:text-emerald-400">
-                LinkedIn connected. You can now ask Paperloft Assist to post on your behalf.
-              </div>
-            ) : null}
-            {sp.linkedin_error ? (
-              <div className="mb-4 p-3 rounded-md bg-red-500/10 border border-red-500/30 text-sm text-red-700 dark:text-red-400">
-                LinkedIn connect failed: {decodeURIComponent(sp.linkedin_error)}
-              </div>
-            ) : null}
-
-            <div className="space-y-3 text-sm">
-              <ConnectRow name="Google" status="Connected" note="For sign-in and profile." />
-              <ConnectRow
-                name="LinkedIn"
-                status={linkedInConnected ? "Connected" : "Not connected"}
-                note={
-                  linkedInConnected
-                    ? "Paperloft Assist can post text updates to your feed."
-                    : "Needed for the LinkedIn posting skill."
-                }
-                action={linkedInConnected ? undefined : "Connect"}
-                href={linkedInConnected ? undefined : "/api/linkedin/connect"}
-              />
-              <ConnectRow name="Google Calendar" status="Not connected" note="Read free slots, draft invites." action="Connect" disabled />
-              <ConnectRow name="GitHub" status="Not connected" note="Read repos, open issues." action="Connect" disabled />
-            </div>
-          </section>
-
           {/* Danger zone */}
           <section className="p-6 rounded-xl border border-red-500/30 bg-red-500/[0.03]">
             <h2 className="font-semibold mb-2 text-red-600 dark:text-red-400">Danger zone</h2>
@@ -131,40 +90,5 @@ export default async function SettingsPage({
         </div>
       </main>
     </AppShell>
-  );
-}
-
-function ConnectRow({
-  name,
-  status,
-  note,
-  action,
-  href,
-  disabled,
-}: {
-  name: string;
-  status: string;
-  note: string;
-  action?: string;
-  href?: string;
-  disabled?: boolean;
-}) {
-  const label = disabled ? "Coming soon" : action;
-  const btnClass =
-    "text-xs px-3 py-1.5 rounded-md border border-border hover:bg-foreground/5 transition disabled:opacity-50 disabled:cursor-not-allowed";
-  return (
-    <div className="flex items-center justify-between gap-3 py-2">
-      <div>
-        <div className="font-medium">{name}</div>
-        <div className="text-xs text-muted-foreground">{note}</div>
-      </div>
-      {action && !disabled && href ? (
-        <a href={href} className={btnClass}>{label}</a>
-      ) : action ? (
-        <button type="button" disabled={disabled} className={btnClass}>{label}</button>
-      ) : (
-        <div className="text-xs text-accent font-medium">{status}</div>
-      )}
-    </div>
   );
 }
