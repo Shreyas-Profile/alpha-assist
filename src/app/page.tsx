@@ -11,7 +11,7 @@
 //   7. Contact + footer — email, links, copyright
 
 import Link from "next/link";
-import { auth, signIn } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
 export default async function LandingPage() {
@@ -56,32 +56,18 @@ function Nav() {
           >
             FAQ
           </a>
-          <form
-            action={async () => {
-              "use server";
-              await signIn("google", { redirectTo: "/chat" });
-            }}
+          <Link
+            href="/signin?callbackUrl=/chat"
+            className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-foreground/5 transition"
           >
-            <button
-              type="submit"
-              className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-foreground/5 transition"
-            >
-              Log in
-            </button>
-          </form>
-          <form
-            action={async () => {
-              "use server";
-              await signIn("google", { redirectTo: "/chat" });
-            }}
+            Log in
+          </Link>
+          <Link
+            href="/signin?callbackUrl=/chat"
+            className="text-sm px-3 py-1.5 rounded-md bg-foreground text-background font-medium hover:opacity-90 transition"
           >
-            <button
-              type="submit"
-              className="text-sm px-3 py-1.5 rounded-md bg-foreground text-background font-medium hover:opacity-90 transition"
-            >
-              Sign up
-            </button>
-          </form>
+            Sign up
+          </Link>
         </div>
       </div>
     </nav>
@@ -109,33 +95,18 @@ function Hero() {
       </p>
 
       <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
-        <form
-          action={async () => {
-            "use server";
-            await signIn("google", { redirectTo: "/chat" });
-          }}
+        <Link
+          href="/signin?callbackUrl=/chat"
+          className="inline-flex items-center gap-3 px-6 py-3 rounded-lg bg-foreground text-background font-medium hover:opacity-90 transition text-base"
         >
-          <button
-            type="submit"
-            className="inline-flex items-center gap-3 px-6 py-3 rounded-lg bg-foreground text-background font-medium hover:opacity-90 transition text-base"
-          >
-            <GoogleGlyph />
-            Sign up with Google
-          </button>
-        </form>
-        <form
-          action={async () => {
-            "use server";
-            await signIn("google", { redirectTo: "/chat" });
-          }}
+          Sign up
+        </Link>
+        <Link
+          href="/signin?callbackUrl=/chat"
+          className="inline-flex items-center gap-3 px-6 py-3 rounded-lg border border-border font-medium hover:bg-foreground/5 transition text-base"
         >
-          <button
-            type="submit"
-            className="inline-flex items-center gap-3 px-6 py-3 rounded-lg border border-border font-medium hover:bg-foreground/5 transition text-base"
-          >
-            Log in
-          </button>
-        </form>
+          Log in
+        </Link>
       </div>
 
       <p className="mt-5 text-xs text-muted-foreground">
@@ -333,24 +304,16 @@ function Pricing() {
               ))}
             </ul>
             {t.name === "Free" ? (
-              <form
-                action={async () => {
-                  "use server";
-                  await signIn("google", { redirectTo: "/chat" });
-                }}
-                className="mt-6"
+              <Link
+                href="/signin?callbackUrl=/chat"
+                className={`mt-6 block text-center w-full py-2.5 rounded-lg font-medium text-sm transition ${
+                  t.highlight
+                    ? "bg-accent text-background hover:opacity-90"
+                    : "bg-foreground text-background hover:opacity-90"
+                }`}
               >
-                <button
-                  type="submit"
-                  className={`w-full py-2.5 rounded-lg font-medium text-sm transition ${
-                    t.highlight
-                      ? "bg-accent text-background hover:opacity-90"
-                      : "bg-foreground text-background hover:opacity-90"
-                  }`}
-                >
-                  {t.cta}
-                </button>
-              </form>
+                {t.cta}
+              </Link>
             ) : (
               <button
                 type="button"

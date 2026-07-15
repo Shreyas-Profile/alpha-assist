@@ -11,7 +11,10 @@
 import { NextResponse } from "next/server";
 import { createSignInCode, sendOtp, type OtpProvider } from "@/lib/otp";
 
-const PROVIDERS = new Set<OtpProvider>(["whatsapp", "telegram"]);
+// Telegram removed from user-facing sign-in — bot cold-DM restriction made
+// the flow too fiddly. The provider stays defined in otp.ts for potential
+// future opt-in from Settings; here we only accept whatsapp.
+const PROVIDERS = new Set<OtpProvider>(["whatsapp"]);
 // E.164: leading +, then 1-15 digits. Not a full validator — just a shape
 // check to reject obvious garbage before we hit the delivery APIs.
 const E164 = /^\+[1-9]\d{6,14}$/;
@@ -27,7 +30,7 @@ export async function POST(req: Request) {
   const phone = (body?.phone ?? body?.identifier)?.trim();
   if (!provider || !PROVIDERS.has(provider) || !phone) {
     return NextResponse.json(
-      { error: "Provider (whatsapp|telegram) and phone required." },
+      { error: "provider (whatsapp) and phone required." },
       { status: 400 },
     );
   }

@@ -3,33 +3,34 @@
 // Providers:
 //   - Google (OAuth) — traditional Google sign-in
 //   - Credentials (whatsapp) — phone + OTP code sent via wasenderapi
-//   - Credentials (telegram) — Telegram chatId + OTP code sent via bot
 //
-// JWT-only sessions. On first sign-in, we auto-enable the skill that matches
-// the provider — Google → browser_mcp, Telegram → telegram_mcp,
-// WhatsApp → reminders. Users can toggle skills freely from /skills afterwards.
+// Telegram removed: Telegram bots can't cold-DM users, so sign-in would have
+// required a one-time bot-link dance. Not worth the friction; we keep the
+// bot around for reminder delivery if a user opts in from Settings later.
 //
-// For OTP-based providers we also stash the user's identifier on their
-// UserChannelPref row so the reminders scheduler knows where to deliver.
+// JWT-only sessions, 1-year rolling expiry (see maxAge/updateAge below).
+// On first sign-in we auto-enable the skill matching the provider:
+//   Google → browser_mcp, WhatsApp → reminders.
+// We also stash the phone number on UserChannelPref so the reminders
+// scheduler knows where to deliver.
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { enableSkill } from "./enabled-skills";
-import { syntheticEmail, verifySignInCode, type OtpProvider } from "./otp";
+import { syntheticEmail, verifySignInCode } from "./otp";
 import { prisma } from "./db";
 
 const PROVIDER_AUTO_ENABLE: Record<string, string> = {
   google: "browser_mcp",
-  telegram: "telegram_mcp",
   whatsapp: "reminders",
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // Sign-in is expensive (OTP round-trip, or a Google popup). Once a user
-  // proves who they are, keep them signed in for a year and roll the expiry
-  // forward every day they use the app. Effectively: sign in once per
-  // browser, then never again unless they clear cookies or sign out.
+  // Trust the incoming Host header. Required behind Cloudflare tunnel where
+  // the container sees plain HTTP but the browser used HTTPS — without this,
+  // NextAuth can't reliably decide cookie prefixes and PKCE breaks.
+  trustHost: true,
   session: {
     strategy: "jwt",
     maxAge: 60 * 60 * 24 * 365,
@@ -48,18 +49,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         code: { label: "Code", type: "text" },
       },
       async authorize(creds) {
-        return authorizeOtp("whatsapp", creds);
-      },
-    }),
-    Credentials({
-      id: "telegram",
-      name: "Telegram",
-      credentials: {
-        identifier: { label: "Phone (E.164)", type: "text" },
-        code: { label: "Code", type: "text" },
-      },
-      async authorize(creds) {
-        return authorizeOtp("telegram", creds);
+        const phone = String(creds?.identifier ?? "").trim();
+        const code = String(creds?.code ?? "").trim();
+        if (!phone || !code) return null;
+        const ok = await verifySignInCode("whatsapp", phone, code);
+        if (!ok) return null;
+        const email = syntheticEmail(phone);
+        return { id: email, email, name: phone };
       },
     }),
   ],
@@ -69,28 +65,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!provider || !user.email) return;
       const skillId = PROVIDER_AUTO_ENABLE[provider];
       if (skillId) enableSkill(user.email, skillId).catch(() => undefined);
-      // Persist per-channel identifiers so the reminders scheduler can deliver
-      // without asking the user again. Both providers store the phone;
-      // Telegram deliveries resolve chat via TelegramPhoneMap.
-      if (provider === "whatsapp" || provider === "telegram") {
+      if (provider === "whatsapp") {
         const phone = user.email.split("@")[0];
-        const map =
-          provider === "telegram"
-            ? await prisma.telegramPhoneMap.findUnique({ where: { phone } }).catch(() => null)
-            : null;
         await prisma.userChannelPref
           .upsert({
             where: { userId: user.email },
-            create: {
-              userId: user.email,
-              whatsappNumber: phone,
-              telegramChatId: map?.chatId,
-              defaultChannel: provider,
-            },
-            update: {
-              whatsappNumber: phone,
-              telegramChatId: map?.chatId ?? undefined,
-            },
+            create: { userId: user.email, whatsappNumber: phone, defaultChannel: "whatsapp" },
+            update: { whatsappNumber: phone },
           })
           .catch(() => undefined);
       }
@@ -100,16 +81,3 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/signin",
   },
 });
-
-async function authorizeOtp(
-  provider: OtpProvider,
-  creds: Partial<Record<"identifier" | "code", unknown>> | undefined,
-) {
-  const phone = String(creds?.identifier ?? "").trim();
-  const code = String(creds?.code ?? "").trim();
-  if (!phone || !code) return null;
-  const ok = await verifySignInCode(provider, phone, code);
-  if (!ok) return null;
-  const email = syntheticEmail(phone);
-  return { id: email, email, name: phone };
-}

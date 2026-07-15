@@ -1,29 +1,24 @@
 "use client";
 
-// Tabbed sign-in — Google, WhatsApp OTP, Telegram OTP.
-// Both OTP flows use the user's phone number in E.164 format. Telegram
-// requires a one-time link step: user opens @shreyasassistantbot, hits
-// /start, taps Share Contact — the bot stores phone→chatId, then we can
-// DM their code. If they hit "Send code" before linking, the API returns
-// HTTP 428 and we show a deep-link to the bot.
+// Two-tab sign-in — Google (OAuth) or WhatsApp (OTP).
+// Telegram was removed: bots can't DM users cold, so it required a one-time
+// bot-link dance that Shreyas judged not worth the friction.
 
 import { useState, useTransition } from "react";
 import { signIn } from "next-auth/react";
 
-type Tab = "google" | "whatsapp" | "telegram";
+type Tab = "google" | "whatsapp";
 
 export function SignInForms({ callbackUrl }: { callbackUrl: string }) {
   const [tab, setTab] = useState<Tab>("google");
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-foreground/[0.05] border border-border">
+      <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-foreground/[0.05] border border-border">
         <TabBtn active={tab === "google"} onClick={() => setTab("google")}>Google</TabBtn>
         <TabBtn active={tab === "whatsapp"} onClick={() => setTab("whatsapp")}>WhatsApp</TabBtn>
-        <TabBtn active={tab === "telegram"} onClick={() => setTab("telegram")}>Telegram</TabBtn>
       </div>
       {tab === "google" && <GoogleForm callbackUrl={callbackUrl} />}
-      {tab === "whatsapp" && <OtpForm provider="whatsapp" callbackUrl={callbackUrl} />}
-      {tab === "telegram" && <OtpForm provider="telegram" callbackUrl={callbackUrl} />}
+      {tab === "whatsapp" && <WhatsAppForm callbackUrl={callbackUrl} />}
     </div>
   );
 }
@@ -64,14 +59,8 @@ function GoogleForm({ callbackUrl }: { callbackUrl: string }) {
   );
 }
 
-function OtpForm({
-  provider,
-  callbackUrl,
-}: {
-  provider: "whatsapp" | "telegram";
-  callbackUrl: string;
-}) {
-  const [step, setStep] = useState<"phone" | "link-telegram" | "code">("phone");
+function WhatsAppForm({ callbackUrl }: { callbackUrl: string }) {
+  const [step, setStep] = useState<"phone" | "code">("phone");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -84,13 +73,9 @@ function OtpForm({
       const res = await fetch("/api/auth/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, phone: phone.trim() }),
+        body: JSON.stringify({ provider: "whatsapp", phone: phone.trim() }),
       });
       const j = (await res.json().catch(() => ({}))) as { error?: string };
-      if (res.status === 428) {
-        setStep("link-telegram");
-        return;
-      }
       if (!res.ok) {
         setError(j.error ?? "Failed to send code.");
         return;
@@ -103,7 +88,7 @@ function OtpForm({
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result = await signIn(provider, {
+      const result = await signIn("whatsapp", {
         identifier: phone.trim(),
         code: code.trim(),
         callbackUrl,
@@ -117,62 +102,12 @@ function OtpForm({
     });
   };
 
-  if (step === "link-telegram") {
-    return (
-      <div className="space-y-3">
-        <div className="rounded-lg border border-accent/40 bg-accent/10 p-3 text-sm space-y-2">
-          <p className="font-medium">Link your Telegram first</p>
-          <ol className="list-decimal list-inside space-y-1 text-xs text-muted-foreground">
-            <li>
-              Open{" "}
-              <a
-                href="https://t.me/shreyasassistantbot"
-                target="_blank"
-                className="text-accent underline"
-                rel="noreferrer"
-              >
-                @shreyasassistantbot
-              </a>
-            </li>
-            <li>Send <code className="rounded bg-foreground/10 px-1">/start</code></li>
-            <li>Tap <b>📱 Share my phone number</b></li>
-            <li>Come back here and hit Retry</li>
-          </ol>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setStep("phone")}
-            className="px-3 py-2 rounded-md border border-border text-sm hover:bg-foreground/5"
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            onClick={sendCode}
-            disabled={pending}
-            className="flex-1 px-4 py-2.5 rounded-lg bg-foreground text-background font-medium hover:opacity-90 disabled:opacity-60"
-          >
-            {pending ? "Retrying…" : "Retry"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   if (step === "phone") {
     return (
       <form onSubmit={sendCode} className="space-y-3">
         <p className="text-xs text-muted-foreground">
-          {provider === "telegram" ? (
-            <>
-              Enter the phone number connected to your Telegram account (international format,
-              e.g. +447700900123). First time only, you&apos;ll be asked to link Telegram to
-              this number.
-            </>
-          ) : (
-            <>Enter your WhatsApp number in international format (e.g. +447700900123). We&apos;ll message you a 6-digit code.</>
-          )}
+          Enter your WhatsApp number in international format (e.g. +447700900123). We&apos;ll
+          message you a 6-digit code.
         </p>
         <input
           type="tel"

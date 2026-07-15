@@ -1,38 +1,37 @@
-// Dedicated sign-in page (Auth.js redirects here when someone hits a protected
-// route without a session). Same UI as the landing sign-in.
+// Dedicated sign-in page. Auth.js redirects here when someone hits a
+// protected route without a session. Renders the tabbed UI (Google + WhatsApp).
 
-import { signIn, auth } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { SignInForms } from "./signin-forms";
 
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string }>;
+  searchParams: Promise<{ callbackUrl?: string; error?: string }>;
 }) {
   const session = await auth();
   if (session?.user) redirect("/chat");
-  const { callbackUrl = "/chat" } = await searchParams;
+  const { callbackUrl = "/chat", error } = await searchParams;
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-6">
-      <div className="max-w-sm w-full space-y-6 text-center">
-        <h1 className="text-2xl font-semibold">Sign in</h1>
-        <p className="text-muted-foreground text-sm">
-          Paperloft Assist uses Google for sign-in. Only your email and profile info are read.
-        </p>
-        <form
-          action={async () => {
-            "use server";
-            await signIn("google", { redirectTo: callbackUrl });
-          }}
-        >
-          <button
-            type="submit"
-            className="w-full px-4 py-2.5 rounded-lg border border-border bg-foreground text-background font-medium hover:opacity-90 transition"
-          >
-            Continue with Google
-          </button>
-        </form>
+    <main className="min-h-screen flex items-center justify-center px-6 py-10">
+      <div className="max-w-md w-full space-y-6">
+        <div className="text-center space-y-2">
+          <div className="w-10 h-10 rounded-lg bg-foreground text-background flex items-center justify-center font-bold mx-auto">
+            P
+          </div>
+          <h1 className="text-2xl font-semibold">Sign in to Paperloft Assist</h1>
+          <p className="text-muted-foreground text-sm">
+            Continue with Google, or use your WhatsApp number.
+          </p>
+        </div>
+        {error ? (
+          <div className="text-sm text-red-500 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2">
+            {decodeURIComponent(error)}
+          </div>
+        ) : null}
+        <SignInForms callbackUrl={callbackUrl} />
       </div>
     </main>
   );
