@@ -34,7 +34,7 @@ export function ChatMessage({ role, parts, avatarUrl, userName }: Props) {
       <Avatar isUser={isUser} avatarUrl={avatarUrl} userName={userName} />
       <div className="flex-1 min-w-0 space-y-2">
         <div className="text-xs font-medium text-muted-foreground">
-          {isUser ? userName ?? "You" : "Alpha Assist"}
+          {isUser ? userName ?? "You" : "Paperloft Assist"}
         </div>
 
         {isUser ? (

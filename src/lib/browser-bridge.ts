@@ -1,6 +1,6 @@
 "use client";
 
-// Client-side messenger from Alpha Assist to the chrome-agent Chrome extension.
+// Client-side messenger from Paperloft Assist to the chrome-agent Chrome extension.
 //
 // The extension declares `externally_connectable` for our origin, and adds
 // a `chrome.runtime.onMessageExternal` listener that speaks the same
@@ -35,7 +35,7 @@ function rawCall(cmd: string, args: unknown): Promise<unknown> {
   const chromeApi = (globalThis as unknown as { chrome?: ChromeMinimal }).chrome;
   if (!chromeApi?.runtime?.sendMessage) {
     throw new Error(
-      "This action needs the alpha-assist Chrome extension installed and enabled. Open http://localhost:3000 in Chrome (not the sandboxed one Claude Code launches), install chrome-agent, then reload this page.",
+      "This action needs the paperloft-assist Chrome extension installed and enabled. Open http://localhost:3000 in Chrome (not the sandboxed one Claude Code launches), install chrome-agent, then reload this page.",
     );
   }
 
@@ -57,13 +57,21 @@ function rawCall(cmd: string, args: unknown): Promise<unknown> {
   });
 }
 
-// Dedup guard for browser_new_tab. Even with parallelToolCalls: false, a
-// confused LLM might still ask us to open the same URL twice. If we already
-// have a tab on that URL (or a same-origin URL for the same site), return
-// its id instead of spawning a duplicate.
+// Session-scoped memory of the tab the LLM is currently driving. When
+// browser_new_tab returns a tab_id, we remember it here, and every subsequent
+// browser_click / browser_type / browser_snapshot / browser_read_page call
+// gets that tab_id injected — even if the user has clicked away to a
+// different tab. Prevents the "I clicked on chat and it clicked buttons in
+// the Paperloft Assist UI instead of workit" failure mode.
+let driveTabId: number | null = null;
+
 async function newTabDedup(args: { url?: string }): Promise<unknown> {
   const wantUrl = args?.url;
-  if (!wantUrl) return rawCall("browser_new_tab", args);
+  if (!wantUrl) {
+    const r = (await rawCall("browser_new_tab", args)) as { tab_id?: number };
+    if (r?.tab_id) driveTabId = r.tab_id;
+    return r;
+  }
   try {
     const tabs = (await rawCall("browser_list_tabs", {})) as Array<{
       id: number;
@@ -80,13 +88,32 @@ async function newTabDedup(args: { url?: string }): Promise<unknown> {
     });
     if (existing) {
       await rawCall("browser_activate_tab", { tab_id: existing.id });
+      driveTabId = existing.id;
       return { tab_id: existing.id, url: existing.url, reused: true };
     }
   } catch {
-    // Fall through to a plain new_tab if listing fails for any reason.
+    // Fall through to a plain new_tab if listing fails.
   }
-  return rawCall("browser_new_tab", args);
+  const r = (await rawCall("browser_new_tab", args)) as { tab_id?: number };
+  if (r?.tab_id) driveTabId = r.tab_id;
+  return r;
 }
+
+// Which browser_* commands need to be pinned to the drive tab so the user can
+// switch tabs freely without breaking the flow. list_tabs / new_tab / status
+// are intentionally excluded — they're either global or set the drive tab.
+const PIN_TO_DRIVE_TAB = new Set([
+  "browser_click",
+  "browser_type",
+  "browser_snapshot",
+  "browser_read_page",
+  "browser_press_key",
+  "browser_scroll",
+  "browser_wait_for",
+  "browser_screenshot",
+  "browser_evaluate",
+  "browser_navigate",
+]);
 
 export async function callExtension(
   cmd: string,
@@ -94,6 +121,12 @@ export async function callExtension(
 ): Promise<unknown> {
   if (cmd === "browser_new_tab") {
     return newTabDedup(args as { url?: string });
+  }
+  // Inject the remembered tab_id so browser_* calls hit the workit tab even
+  // if the user has switched focus to the chat tab.
+  if (PIN_TO_DRIVE_TAB.has(cmd) && driveTabId) {
+    const merged = { ...(args as object), tab_id: (args as { tab_id?: number })?.tab_id ?? driveTabId };
+    return rawCall(cmd, merged);
   }
   return rawCall(cmd, args);
 }

@@ -1,8 +1,8 @@
-# Alpha Assist
+# Paperloft Assist
 
 A general-purpose AI assistant platform. Chat interface with markdown output, document uploads, and a pluggable skill system. Google sign-in, per-user storage, marketplace + "my skills" model. Designed with a human-in-the-loop philosophy.
 
-Skills live in a separate repo — [`alpha-assist-skills`](https://github.com/Shreyas-Profile/alpha-assist-skills) *(coming in Phase 3)*.
+Skills live in a separate repo — [`paperloft-assist-skills`](https://github.com/Shreyas-Profile/paperloft-assist-skills) *(coming in Phase 3)*.
 
 ## Stack
 
@@ -29,8 +29,8 @@ Skills live in a separate repo — [`alpha-assist-skills`](https://github.com/Sh
 Prerequisites: **Node.js 22+**, **pnpm**.
 
 ```powershell
-git clone https://github.com/Shreyas-Profile/alpha-assist.git
-cd alpha-assist
+git clone https://github.com/Shreyas-Profile/paperloft-assist.git
+cd paperloft-assist
 pnpm install
 
 # Configure secrets — see .env.example for what each var is
@@ -58,7 +58,7 @@ Then open http://localhost:3000, click **Sign in with Google**, and you should l
 ## Project structure
 
 ```
-alpha-assist/
+paperloft-assist/
 ├── prisma/
 │   └── schema.prisma          # Auth.js required tables
 ├── src/

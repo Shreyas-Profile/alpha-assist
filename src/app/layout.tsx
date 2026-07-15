@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Alpha Assist",
+  title: "Paperloft Assist",
   description:
     "A general-purpose AI assistant with pluggable skills, chat history, and document uploads.",
 };

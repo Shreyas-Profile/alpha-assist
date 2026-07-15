@@ -19,7 +19,7 @@ export async function TopNav() {
     <header className="border-b border-border">
       <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-4">
         <Link href="/chat" className="font-semibold hover:opacity-80 transition">
-          Alpha Assist
+          Paperloft Assist
         </Link>
 
         <div className="flex items-center gap-2">

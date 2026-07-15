@@ -16,7 +16,7 @@ import { z } from "zod";
 
 export const browserNewTab = tool({
   description:
-    "Open a URL in a NEW tab. ALWAYS use this instead of browser_navigate when the user is currently on the Alpha Assist chat — you must not overwrite their current tab. Returns the new tab_id, which subsequent browser_* calls can address via the active tab (the new tab becomes active).",
+    "Open a URL in a NEW tab. ALWAYS use this instead of browser_navigate when the user is currently on the Paperloft Assist chat — you must not overwrite their current tab. Returns the new tab_id, which subsequent browser_* calls can address via the active tab (the new tab becomes active).",
   inputSchema: z.object({
     url: z.string().describe("Full URL to open."),
   }),

@@ -11,8 +11,8 @@ const schema = z.object({
   // LLM
   OPENROUTER_API_KEY: z.string().min(1),
   MODEL: z.string().min(1).default("deepseek/deepseek-v4-pro"),
-  // DB
-  DATABASE_URL: z.string().min(1).default("file:./dev.db"),
+  // Postgres
+  DATABASE_URL: z.string().min(1),
 });
 
 // Parse eagerly so failures surface at process start, not at the first request.

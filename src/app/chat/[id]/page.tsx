@@ -1,13 +1,13 @@
 // Authed. A specific conversation. Loads history from DB (server-side),
 // then hands it to ChatView which continues streaming via /api/chat.
 
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { UIMessage } from "ai";
 
 import { auth } from "@/lib/auth";
 import { getConversation } from "@/lib/chat";
 import { ChatView } from "@/components/chat/chat-view";
-import { TopNav } from "@/components/top-nav";
+import { AppShell } from "@/components/app-shell/app-shell";
 
 export default async function ChatDetailPage({
   params,
@@ -17,12 +17,11 @@ export default async function ChatDetailPage({
   const { id } = await params;
   const session = await auth();
   const email = session?.user?.email;
-  if (!email) notFound(); // middleware should have caught this, defensive check
+  if (!email) redirect("/signin");
 
   const conv = await getConversation(id, email);
-  if (!conv) notFound(); // wrong owner or bad ID both look like "not found"
+  if (!conv) notFound();
 
-  // Convert stored messages into the AI SDK's UIMessage shape for hydration.
   const initialMessages: UIMessage[] = conv.messages.map((m) => ({
     id: m.id,
     role: m.role as UIMessage["role"],
@@ -30,14 +29,13 @@ export default async function ChatDetailPage({
   }));
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <TopNav />
+    <AppShell>
       <ChatView
         conversationId={conv.id}
         initialMessages={initialMessages}
         userName={session?.user?.name}
         userImage={session?.user?.image}
       />
-    </div>
+    </AppShell>
   );
 }

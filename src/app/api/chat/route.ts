@@ -18,6 +18,7 @@ import { auth } from "@/lib/auth";
 import { appendMessage, createConversation } from "@/lib/chat";
 import { CHAT_MODEL, SYSTEM_PROMPT, openrouter } from "@/lib/openrouter";
 import { skills } from "@/lib/skills";
+import { makeLinkedInSkill } from "@/lib/skills/linkedin-post";
 
 export const runtime = "nodejs"; // Prisma + better-sqlite3 need Node runtime, not Edge.
 export const maxDuration = 60;
@@ -80,8 +81,12 @@ export async function POST(req: Request) {
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(uiMessages),
     // Skills the LLM can invoke via tool-calling. Each returns data the model
-    // then reads in a follow-up step.
-    tools: skills,
+    // then reads in a follow-up step. linkedin_post is built per-request so
+    // it can capture the authed user's email for token lookup.
+    tools: {
+      ...skills,
+      linkedin_post: makeLinkedInSkill(email),
+    },
     // Cap per-server-round steps. The full loop is bounded by the client's
     // sendAutomaticallyWhen guard (15 assistant turns total).
     stopWhen: stepCountIs(5),

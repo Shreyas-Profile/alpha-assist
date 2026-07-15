@@ -18,7 +18,7 @@ export default async function SignInPage({
       <div className="max-w-sm w-full space-y-6 text-center">
         <h1 className="text-2xl font-semibold">Sign in</h1>
         <p className="text-muted-foreground text-sm">
-          Alpha Assist uses Google for sign-in. Only your email and profile info are read.
+          Paperloft Assist uses Google for sign-in. Only your email and profile info are read.
         </p>
         <form
           action={async () => {
