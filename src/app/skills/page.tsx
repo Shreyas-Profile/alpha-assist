@@ -56,13 +56,13 @@ const SKILLS: SkillEntry[] = [
   },
   {
     id: "reminders",
-    name: "Reminders",
+    name: "Reminders & Prescriptions",
     category: "Notifications · WhatsApp",
     description:
-      "Ask your assistant to remind you about anything — meetings, meds, birthdays, deadlines. Reminders arrive as WhatsApp messages when due.",
+      "General reminders (meetings, birthdays, deadlines) plus medication schedules with Taken/Snooze/Skip acks and prescription intake — snap a prescription photo or paste text and the assistant auto-schedules the meds and follow-up. Delivered via WhatsApp; Telegram coming.",
     price: "Free",
     needs: "WhatsApp sign-in (or your phone number)",
-    publisher: "Paperloft Assist",
+    publisher: "Globalion (Shreyas, forked from Pakki10/nova-reminders)",
   },
 ];
 

@@ -69,3 +69,93 @@ model EnabledSkill {
   @@id([userEmail, skillId])
   @@index([userEmail])
 }
+
+// ---- Reminders skill (vendored from Pakki10/nova-reminders MIT) ----------
+// Replaces the earlier flat `Reminder` model. `userId` here stores the
+// user's email — paperloft-assist identifies users by JWT email and
+// nova-reminders is agnostic about the id format.
+
+model Reminder {
+  id                String    @id @default(cuid())
+  userId            String
+  type              String    @default("general") // general | medication | appointment
+  title             String
+  description       String?
+  dueAt             DateTime
+  recurrence        String    @default("none") // none | hourly | daily | weekdays | weekly | monthly | yearly | cron:<expr>
+  recurrenceEnd     DateTime?
+  status            String    @default("pending") // pending | sent | cancelled | draft
+  ackMode           String    @default("tap") // none | tap | reply
+  snoozeOffer       Int[]     @default([])
+  escalateAfterMin  Int       @default(0)
+  prescriptionId    String?
+  telegramChatId    String?
+  metadata          Json      @default("{}")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  instances         ReminderInstance[]
+  prescription      Prescription?      @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([dueAt, status])
+  @@map("reminders")
+}
+
+model ReminderInstance {
+  id                    String    @id @default(cuid())
+  reminderId            String
+  userId                String
+  scheduledFor          DateTime
+  firedAt               DateTime?
+  ackState              String    @default("pending") // pending | acked | snoozed | missed | skipped
+  ackButtonId           String?
+  ackAt                 DateTime?
+  snoozedToInstanceId   String?
+  channels              String[]  @default([])
+  escalatedAt           DateTime?
+
+  reminder              Reminder  @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ackState])
+  @@index([scheduledFor, ackState])
+  @@index([reminderId, scheduledFor])
+  @@map("reminder_instances")
+}
+
+model Prescription {
+  id                   String    @id @default(cuid())
+  userId               String
+  patientName          String?
+  doctorName           String?
+  doctorRegistrationNo String?
+  hospitalOrClinic     String?
+  prescriptionDate     DateTime?
+  followUpDate         DateTime?
+  diagnoses            String[]  @default([])
+  advice               String?
+  medications          Json      @default("[]")
+  fileRef              String?
+  starred              Boolean   @default(false)
+  extractedText        String?   @db.Text
+  createdAt            DateTime  @default(now())
+
+  reminders            Reminder[]
+
+  @@index([userId, createdAt])
+  @@index([userId, starred])
+  @@map("prescriptions")
+}
+
+model UserChannelPref {
+  userId               String   @id
+  telegramChatId       String?
+  whatsappNumber       String?
+  defaultChannel       String   @default("whatsapp") // paperloft-assist default = WhatsApp (wasender wired)
+  fallbackChannel      String?
+  askAckOnGeneral      Boolean  @default(false)
+  defaultSnoozeMinutes Int[]    @default([5, 10])
+  updatedAt            DateTime @updatedAt
+
+  @@map("user_channel_prefs")
+}

@@ -19,6 +19,10 @@ import { appendMessage, createConversation } from "@/lib/chat";
 import { CHAT_MODEL, SYSTEM_PROMPT, openrouter } from "@/lib/openrouter";
 import { skills, makeUserScopedSkills } from "@/lib/skills";
 import { makeLinkedInSkill } from "@/lib/skills/linkedin-post";
+import { listEnabledSkills } from "@/lib/enabled-skills";
+import { toolsForEnabledSkills } from "@/lib/skill-tool-map";
+import { createReminderSkill } from "@/lib/skills/nova-reminders";
+import { makeReminderCtx } from "@/lib/reminders-adapter";
 
 export const runtime = "nodejs"; // Prisma + better-sqlite3 need Node runtime, not Edge.
 export const maxDuration = 60;
@@ -29,6 +33,20 @@ function extractText(message: UIMessage): string {
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
     .map((p) => p.text)
     .join("");
+}
+
+// Keep only tools whose names are in the allowlist. Used to hide tools for
+// skills the user hasn't toggled on. Preserves the tool objects unchanged —
+// each still carries its own schema, description, execute fn, etc.
+function filterTools<T extends Record<string, unknown>>(
+  allTools: T,
+  allow: Set<string>,
+): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [name, tool] of Object.entries(allTools)) {
+    if (allow.has(name)) out[name] = tool;
+  }
+  return out as Partial<T>;
 }
 
 export async function POST(req: Request) {
@@ -73,21 +91,44 @@ export async function POST(req: Request) {
   // "remember" what it already did in this turn (e.g., it already opened a
   // workit tab — don't open another). We can't rebuild that from the DB
   // because tool state isn't persisted.
+  // Build the nova-reminders skill per-request so it captures the user's
+  // email. Its 13 tools flow into the same filter as everything else.
+  const reminderSkill = createReminderSkill(makeReminderCtx(email));
+  const enabled = await listEnabledSkills(email);
+  const allowed = toolsForEnabledSkills(enabled);
+
+  // Today's date/time. Without this, models like DeepSeek reply "what's today's
+  // date?" whenever the user says "tomorrow", "tonight", "next Monday" etc.
+  const now = new Date();
+  const timeContext =
+    `Current UTC time: ${now.toISOString()} (${now.toUTCString()}). ` +
+    `When the user says relative times ("tomorrow 9am", "in 2 hours", "tonight 8pm"), ` +
+    `resolve them against this timestamp and convert to ISO 8601 UTC before calling any tool.`;
+
   const result = streamText({
     // .chat() forces the classic /v1/chat/completions endpoint. Without it,
     // @ai-sdk/openai defaults to OpenAI's newer /v1/responses API, which
     // OpenRouter doesn't implement for most models (including DeepSeek).
     model: openrouter.chat(CHAT_MODEL),
-    system: SYSTEM_PROMPT,
+    system:
+      timeContext + "\n\n" +
+      SYSTEM_PROMPT +
+      (enabled.has("reminders") ? "\n\n" + reminderSkill.systemPrompt : ""),
     messages: await convertToModelMessages(uiMessages),
-    // Skills the LLM can invoke via tool-calling. Each returns data the model
-    // then reads in a follow-up step. linkedin_post is built per-request so
-    // it can capture the authed user's email for token lookup.
-    tools: {
-      ...skills,
-      ...makeUserScopedSkills(email),
-      linkedin_post: makeLinkedInSkill(email),
-    },
+    // Skills the LLM can invoke via tool-calling. The full tool set is
+    // filtered by which skills the user has toggled on in /skills — a
+    // disabled skill's tools are simply not passed to the model, so it
+    // can't call them. linkedin_post is legacy per-user code, kept until
+    // it becomes a real toggleable skill.
+    tools: filterTools(
+      {
+        ...skills,
+        ...makeUserScopedSkills(email),
+        ...reminderSkill.tools,
+        linkedin_post: makeLinkedInSkill(email),
+      },
+      allowed,
+    ),
     // Cap per-server-round steps. The full loop is bounded by the client's
     // sendAutomaticallyWhen guard (15 assistant turns total).
     stopWhen: stepCountIs(5),

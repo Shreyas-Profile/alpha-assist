@@ -1,0 +1,186 @@
+import { tool } from "ai";
+import { z } from "zod";
+import type { SkillContext } from "../context";
+import { serializeRecurrence } from "../recurrence";
+
+const recurrenceEnum = z.enum([
+  "none",
+  "hourly",
+  "daily",
+  "weekdays",
+  "weekly",
+  "monthly",
+  "yearly",
+]);
+
+const reminderTypeEnum = z.enum(["general", "medication", "appointment"]);
+const ackModeEnum = z.enum(["none", "tap", "reply"]);
+
+export function reminderCreate(ctx: SkillContext) {
+  return tool({
+    description:
+      "Create a reminder. `type` defaults to 'general'; use 'medication' for pill/dose reminders and 'appointment' for one-shot visits. `dueAt` is ISO 8601. Set `recurrence` for repeating reminders. Medication reminders get Taken/Snooze/Skip buttons by default; general reminders are silent unless `ackMode` is set to 'tap'.",
+    inputSchema: z.object({
+      title: z.string().min(1).max(200),
+      dueAt: z.string().describe("ISO 8601 datetime"),
+      description: z.string().optional(),
+      type: reminderTypeEnum.optional(),
+      recurrence: recurrenceEnum.optional(),
+      recurrenceEnd: z.string().optional(),
+      ackMode: ackModeEnum.optional(),
+      snoozeMinutes: z.array(z.number().int().positive()).optional(),
+      escalateAfterMin: z.number().int().min(0).optional(),
+      prescriptionId: z.string().optional(),
+    }),
+    execute: async (input) => {
+      const type = input.type ?? "general";
+      const defaultAck =
+        type === "medication" ? "tap" : type === "appointment" ? "tap" : "none";
+      const ackMode = input.ackMode ?? defaultAck;
+      const defaultSnooze =
+        type === "medication" ? [10] : type === "appointment" ? [] : [];
+      const snooze = input.snoozeMinutes ?? defaultSnooze;
+      const escalate =
+        input.escalateAfterMin ?? (type === "medication" ? 10 : 0);
+
+      const r = await ctx.prisma.reminder.create({
+        data: {
+          userId: ctx.userId,
+          type,
+          title: input.title,
+          description: input.description ?? null,
+          dueAt: new Date(input.dueAt),
+          recurrence: serializeRecurrence(input.recurrence ?? "none"),
+          recurrenceEnd: input.recurrenceEnd ? new Date(input.recurrenceEnd) : null,
+          ackMode,
+          snoozeOffer: snooze,
+          escalateAfterMin: escalate,
+          prescriptionId: input.prescriptionId ?? null,
+        },
+      });
+      return { id: r.id, dueAt: r.dueAt.toISOString(), type: r.type };
+    },
+  });
+}
+
+export function reminderList(ctx: SkillContext) {
+  return tool({
+    description:
+      "List the user's reminders. Filter by status/type/date range. Returns compact rows suitable for showing to the user.",
+    inputSchema: z.object({
+      status: z
+        .enum(["pending", "sent", "cancelled", "draft"])
+        .optional()
+        .default("pending"),
+      type: reminderTypeEnum.optional(),
+      limit: z.number().int().min(1).max(50).optional().default(20),
+      fromDate: z.string().optional(),
+      toDate: z.string().optional(),
+    }),
+    execute: async (input) => {
+      const where: Record<string, unknown> = {
+        userId: ctx.userId,
+        status: input.status,
+      };
+      if (input.type) where.type = input.type;
+      if (input.fromDate || input.toDate) {
+        const dueAt: Record<string, Date> = {};
+        if (input.fromDate) dueAt.gte = new Date(input.fromDate);
+        if (input.toDate) dueAt.lte = new Date(input.toDate);
+        where.dueAt = dueAt;
+      }
+      const rows = await ctx.prisma.reminder.findMany({
+        where,
+        orderBy: { dueAt: "asc" },
+        take: input.limit,
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          dueAt: true,
+          recurrence: true,
+          status: true,
+        },
+      });
+      return {
+        count: rows.length,
+        reminders: rows.map((r: { id: string; title: string; type: string; dueAt: Date; recurrence: string; status: string }) => ({
+          ...r,
+          dueAt: r.dueAt.toISOString(),
+        })),
+      };
+    },
+  });
+}
+
+export function reminderGet(ctx: SkillContext) {
+  return tool({
+    description: "Get full details for a single reminder by id.",
+    inputSchema: z.object({ id: z.string() }),
+    execute: async ({ id }) => {
+      const r = await ctx.prisma.reminder.findFirst({
+        where: { id, userId: ctx.userId },
+      });
+      if (!r) return { error: "Not found" };
+      return {
+        ...r,
+        dueAt: r.dueAt.toISOString(),
+        recurrenceEnd: r.recurrenceEnd?.toISOString() ?? null,
+      };
+    },
+  });
+}
+
+export function reminderUpdate(ctx: SkillContext) {
+  return tool({
+    description:
+      "Update any subset of a reminder's fields. Use this when the user says things like 'change my BP reminder to 9am' or 'stop repeating after next month'.",
+    inputSchema: z.object({
+      id: z.string(),
+      title: z.string().optional(),
+      dueAt: z.string().optional(),
+      description: z.string().optional(),
+      recurrence: recurrenceEnum.optional(),
+      recurrenceEnd: z.string().nullable().optional(),
+      ackMode: ackModeEnum.optional(),
+      snoozeMinutes: z.array(z.number().int().positive()).optional(),
+    }),
+    execute: async (input) => {
+      const data: Record<string, unknown> = {};
+      if (input.title !== undefined) data.title = input.title;
+      if (input.dueAt !== undefined) data.dueAt = new Date(input.dueAt);
+      if (input.description !== undefined) data.description = input.description;
+      if (input.recurrence !== undefined) {
+        data.recurrence = serializeRecurrence(input.recurrence);
+      }
+      if (input.recurrenceEnd !== undefined) {
+        data.recurrenceEnd = input.recurrenceEnd
+          ? new Date(input.recurrenceEnd)
+          : null;
+      }
+      if (input.ackMode !== undefined) data.ackMode = input.ackMode;
+      if (input.snoozeMinutes !== undefined) data.snoozeOffer = input.snoozeMinutes;
+
+      const r = await ctx.prisma.reminder.updateMany({
+        where: { id: input.id, userId: ctx.userId },
+        data,
+      });
+      return { updated: r.count > 0 };
+    },
+  });
+}
+
+export function reminderDelete(ctx: SkillContext) {
+  return tool({
+    description:
+      "Cancel a reminder (soft-delete: status → 'cancelled'). Use for 'stop reminding me about X' / 'delete the water reminder'.",
+    inputSchema: z.object({ id: z.string() }),
+    execute: async ({ id }) => {
+      const r = await ctx.prisma.reminder.updateMany({
+        where: { id, userId: ctx.userId },
+        data: { status: "cancelled" },
+      });
+      return { cancelled: r.count > 0 };
+    },
+  });
+}

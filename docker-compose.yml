@@ -30,11 +30,16 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://admin:admin@db:5432/paperloft_assist
+      USERFILES_ROOT: /data/users
     ports:
       - "3016:3000"
+    volumes:
+      # Per-user files (prescription uploads etc.) — persist across rebuilds.
+      - userfiles:/data/users
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   pgdata:
+  userfiles:

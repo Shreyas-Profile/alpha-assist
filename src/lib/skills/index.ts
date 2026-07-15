@@ -17,7 +17,6 @@ import {
   browserType,
   browserReadPage,
 } from "./browser-primitives";
-import { makeRemindersSkill } from "./reminders";
 
 // Provider-agnostic base skills (no per-user context needed).
 export const skills = {
@@ -32,11 +31,9 @@ export const skills = {
   browser_read_page: browserReadPage,
 } as const;
 
-// Per-user skills that need the authed userEmail (so the LLM can bind
-// the tool to the right owner). The chat route composes these into the
-// full tool set at request time.
-export function makeUserScopedSkills(userEmail: string) {
-  return {
-    set_reminder: makeRemindersSkill(userEmail),
-  } as const;
+// Per-user skills that need the authed userEmail. Currently empty —
+// set_reminder was superseded by the nova-reminders skill (14 richer tools
+// composed in chat/route.ts via createReminderSkill).
+export function makeUserScopedSkills(_userEmail: string) {
+  return {} as const;
 }
