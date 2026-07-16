@@ -12,6 +12,8 @@ import { AppShell } from "@/components/app-shell/app-shell";
 import { isAdmin } from "@/lib/admin";
 import { listEnabledSkills } from "@/lib/enabled-skills";
 import { SkillCard } from "./skill-card";
+import { prisma } from "@/lib/db";
+import { TelegramConnect } from "../settings/telegram-connect";
 
 type SkillEntry = {
   id: string;
@@ -71,6 +73,9 @@ export default async function SkillsPage() {
   if (!session?.user?.email) redirect("/signin");
   const admin = isAdmin(session.user.email);
   const enabled = await listEnabledSkills(session.user.email);
+  const telegramLink = await prisma.telegramLink
+    .findUnique({ where: { userEmail: session.user.email } })
+    .catch(() => null);
 
   return (
     <AppShell>
@@ -90,6 +95,27 @@ export default async function SkillsPage() {
               {admin ? " — and you're an admin, so it stays free" : ""}.
             </p>
           </div>
+
+          {/* Telegram — first-class connect card, not a toggle. Was on Settings; moved
+              here because it's a capability, not an account preference. */}
+          <section className="mb-6 p-5 rounded-xl border border-border bg-foreground/[0.02]">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="text-[11px] uppercase tracking-widest text-accent font-semibold">
+                  Delivery channel
+                </div>
+                <h2 className="text-lg font-semibold mt-1">Telegram</h2>
+                <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+                  Chat with Paperloft on Telegram (@PaperloftAssistantBot) and receive
+                  reminders / notifications there. One-time link — same account, both surfaces.
+                </p>
+              </div>
+            </div>
+            <TelegramConnect
+              linkedUsername={telegramLink?.username ?? null}
+              linkedFirstName={telegramLink?.firstName ?? null}
+            />
+          </section>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {SKILLS.map((s) => (

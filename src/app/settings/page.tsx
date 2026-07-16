@@ -78,14 +78,7 @@ export default async function SettingsPage() {
             )}
           </section>
 
-          {/* Telegram */}
-          <section className="p-6 rounded-xl border border-border bg-foreground/[0.02]">
-            <h2 className="font-semibold mb-4">Telegram</h2>
-            <TelegramConnect
-              linkedUsername={telegramLink?.username ?? null}
-              linkedFirstName={telegramLink?.firstName ?? null}
-            />
-          </section>
+          {/* Telegram moved to /skills — it's a capability, not an account preference. */}
 
           {/* Danger zone */}
           <section className="p-6 rounded-xl border border-red-500/30 bg-red-500/[0.03]">

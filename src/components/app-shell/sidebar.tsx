@@ -1,12 +1,14 @@
 "use client";
 
 // Persistent left sidebar shown on every authed page (chat, skills, settings).
-// Collapses to icons on medium screens, hidden on mobile in favour of a header
-// menu (TODO — for now it's just always shown on md+).
+// On md+ screens it's a fixed sidebar. On mobile it collapses into a
+// hamburger drawer overlay so users can still reach /skills, /settings,
+// sign-out, etc. Auto-closes when the route changes.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, Sparkles, Settings, LogOut } from "lucide-react";
+import { useEffect, useState } from "react";
+import { MessageSquare, Sparkles, Settings, LogOut, Menu, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
@@ -35,17 +37,115 @@ export function Sidebar({
   isAdmin?: boolean;
 }) {
   const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Auto-close drawer whenever the route changes (user clicked a nav item).
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   return (
-    <aside className="hidden md:flex md:w-56 shrink-0 border-r border-border/50 bg-foreground/[0.02] flex-col h-screen sticky top-0">
-      <div className="px-4 py-4 border-b border-border/50">
+    <>
+      {/* Mobile top-bar with hamburger — only visible under md */}
+      <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-border/50 bg-background/95 backdrop-blur">
         <Link href="/chat" className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-md bg-foreground text-background flex items-center justify-center text-sm font-bold">
+          <div className="w-6 h-6 rounded-md bg-foreground text-background flex items-center justify-center text-xs font-bold">
             P
           </div>
-          <span className="font-semibold">Paperloft Assist</span>
+          <span className="text-sm font-semibold">Paperloft Assist</span>
         </Link>
-      </div>
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open menu"
+          className="p-2 -mr-2 rounded-md hover:bg-foreground/10 transition"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      </header>
 
+      {/* Mobile drawer backdrop */}
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setMobileOpen(false)}
+          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+        />
+      )}
+
+      <aside
+        className={cn(
+          "border-r border-border/50 bg-background flex-col",
+          // Mobile: fixed drawer, animated in from the left
+          "md:hidden fixed inset-y-0 left-0 z-50 w-64 flex transition-transform duration-200 ease-out",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        <MobileHeader onClose={() => setMobileOpen(false)} />
+        <NavContent
+          pathname={pathname}
+          userName={userName}
+          userImage={userImage}
+          isAdmin={isAdmin}
+        />
+      </aside>
+
+      {/* Desktop sidebar — sticky, always visible on md+ */}
+      <aside className="hidden md:flex md:w-56 shrink-0 border-r border-border/50 bg-foreground/[0.02] flex-col h-screen sticky top-0">
+        <div className="px-4 py-4 border-b border-border/50">
+          <Link href="/chat" className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-md bg-foreground text-background flex items-center justify-center text-sm font-bold">
+              P
+            </div>
+            <span className="font-semibold">Paperloft Assist</span>
+          </Link>
+        </div>
+        <NavContent
+          pathname={pathname}
+          userName={userName}
+          userImage={userImage}
+          isAdmin={isAdmin}
+        />
+      </aside>
+    </>
+  );
+}
+
+function MobileHeader({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="px-4 py-4 border-b border-border/50 flex items-center justify-between">
+      <Link href="/chat" className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-md bg-foreground text-background flex items-center justify-center text-sm font-bold">
+          P
+        </div>
+        <span className="font-semibold">Paperloft Assist</span>
+      </Link>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close menu"
+        className="p-1.5 rounded-md hover:bg-foreground/10 transition"
+      >
+        <X className="w-5 h-5" />
+      </button>
+    </div>
+  );
+}
+
+function NavContent({
+  pathname,
+  userName,
+  userImage,
+  isAdmin,
+}: {
+  pathname: string;
+  userName?: string | null;
+  userImage?: string | null;
+  isAdmin?: boolean;
+}) {
+  return (
+    <>
       <nav className="flex-1 flex flex-col p-2 gap-1">
         {PRIMARY.map((item) => (
           <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
@@ -90,7 +190,7 @@ export function Sidebar({
           </button>
         </div>
       </div>
-    </aside>
+    </>
   );
 }
 

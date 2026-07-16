@@ -1,28 +1,31 @@
 // Auth.js (NextAuth v5) configuration.
 //
 // Providers:
-//   - Google (OAuth) — traditional Google sign-in
+//   - Google (OAuth) — traditional Google sign-in.
 //   - Credentials (telegram) — Telegram Login Widget hand-off; the
 //     /api/auth/telegram-login route validates the HMAC before the browser
-//     ever reaches this authorize() call, so we treat the id here as trusted.
+//     ever reaches this authorize() call, so the id here is already trusted.
 //
-// (WhatsApp OTP is still wired in the codebase — wasender.ts, otp.ts, the
-// /api/auth/otp/send route, phone map — but is not exposed on the sign-in
-// page. Will come back as a delivery skill once a wasender WhatsApp session
-// is linked.)
+// Identity unification: if a user connected their Telegram to a Google
+// account (via Settings → Connect Telegram → deep-link → bot /start), a
+// TelegramLink row exists mapping chatId → their Google email. When the
+// SAME person later signs in via the Telegram widget, we look that row up
+// and log them in as the ORIGINAL account instead of minting a fresh
+// synthetic tg-*@telegram.paperloft.local identity. Otherwise "connect
+// once, use forever" would keep asking them to reconnect every widget sign-in.
 //
-// JWT-only sessions, 1-year rolling expiry. On sign-in we auto-enable the
-// skill matching the provider (Google → browser_mcp, Telegram → telegram_mcp).
+// JWT-only sessions, 1-year rolling expiry. On every sign-in we ensure the
+// user has the default skill set enabled (idempotent).
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { enableSkill } from "./enabled-skills";
+import { prisma } from "./db";
 
-const PROVIDER_AUTO_ENABLE: Record<string, string> = {
-  google: "browser_mcp",
-  telegram: "telegram_mcp",
-};
+// Skills every user gets by default, on every sign-in. `enableSkill` is
+// idempotent, so re-inserting is a cheap no-op after the first time.
+const DEFAULT_SKILLS = ["browser_agent", "reminders", "telegram_mcp"];
 
 function telegramEmail(id: string): string {
   return `tg-${id}@telegram.paperloft.local`;
@@ -55,7 +58,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(creds) {
         const id = String(creds?.telegramId ?? "").trim();
         if (!id || !/^\d+$/.test(id)) return null;
-        const email = telegramEmail(id);
+
+        // Identity unification (see file header).
+        const existing = await prisma.telegramLink
+          .findFirst({ where: { chatId: id } })
+          .catch(() => null);
+        const email = existing?.userEmail ?? telegramEmail(id);
         const name =
           String(creds?.username ?? "") ||
           String(creds?.firstName ?? "") ||
@@ -70,11 +78,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   events: {
-    async signIn({ user, account }) {
-      const provider = account?.provider;
-      if (!provider || !user.email) return;
-      const skillId = PROVIDER_AUTO_ENABLE[provider];
-      if (skillId) enableSkill(user.email, skillId).catch(() => undefined);
+    async signIn({ user }) {
+      if (!user.email) return;
+      // Every user gets the default skill set. enableSkill upserts — safe to
+      // call on every sign-in, even for returning users.
+      for (const skillId of DEFAULT_SKILLS) {
+        enableSkill(user.email, skillId).catch(() => undefined);
+      }
     },
   },
   pages: {
