@@ -17,6 +17,7 @@
 import { NextResponse } from "next/server";
 import { sendTelegramToChatId } from "@/lib/telegram-bot";
 import { prisma } from "@/lib/db";
+import { handleTelegramMessage } from "@/lib/telegram-chat";
 
 export const runtime = "nodejs";
 
@@ -58,10 +59,21 @@ export async function POST(
     } else {
       await sendTelegramToChatId(
         chatId,
-        "👋 This is the Paperloft Assist bot.\n\nTo connect this Telegram to your Paperloft account, open Settings → Connect Telegram on paperloft.uk and follow the button.",
+        "👋 This is the Paperloft Assist bot.\n\nTo connect this Telegram to your Paperloft account, open Settings → Connect Telegram on paperloft.uk and follow the button.\n\nAlready connected? Just ask me anything.",
       ).catch(() => undefined);
     }
+    return NextResponse.json({ ok: true });
   }
+
+  // Any other text → route to the AI. Fire-and-forget so we return 200 to
+  // Telegram immediately (they retry on non-200 within a short window,
+  // which would duplicate the reply).
+  handleTelegramMessage(chatId, text)
+    .then((reply) => sendTelegramToChatId(chatId, reply))
+    .catch((err) => {
+      console.error("[tg-webhook] chat handler threw:", err);
+      return sendTelegramToChatId(chatId, "Something broke. Try again in a moment.");
+    });
 
   return NextResponse.json({ ok: true });
 }
