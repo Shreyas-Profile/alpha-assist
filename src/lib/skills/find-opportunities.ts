@@ -38,7 +38,7 @@ async function fetchViaJina(targetUrl: string): Promise<string> {
 
 export const findOpportunitiesTool = tool({
   description:
-    "Fetch any public web page and return its content as clean markdown. Use for reading job boards (Indeed, LinkedIn, Reed, Glassdoor…), articles, documentation, product pages, apprenticeship listings — anything with a URL. If you don't know the exact URL, guess a canonical one (e.g. 'https://uk.indeed.com/jobs?q=AI+developer&l=Glasgow') and try. Prefer this over browser_* tools when a straight page fetch will do — it's an order of magnitude faster than driving Chrome.",
+    "Fetch any public web page and return its content as clean markdown. Not scoped to any category — use it any time the user asks about something with a URL, whether that's an article, a Wikipedia page, product specs, a booking site, a dashboard, a listing, a recipe, docs, anything. If you don't know the exact URL, guess a canonical one (Google it in your head — sitename.com or sitename.com/search?q=…) and try. Prefer this over browser_* tools when a straight page fetch will do; it's an order of magnitude faster than driving Chrome.",
   inputSchema: z.object({
     url: z
       .string()
