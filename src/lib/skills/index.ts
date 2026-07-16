@@ -10,6 +10,7 @@
 
 import { findOpportunitiesTool } from "./find-opportunities";
 import { makeHostedBrowserSkills } from "../hosted-browser";
+import { makeCronSkills } from "../hosted-cron";
 import {
   browserNewTab,
   browserNavigate,
@@ -33,10 +34,13 @@ export const skills = {
   browser_read_page: browserReadPage,
 } as const;
 
-// Per-user skills that need the authed userEmail. Hosted-browser tools go
-// here because they cache a browser-mcp sessionId per user.
+// Per-user skills that need the authed userEmail. Hosted-browser + cron
+// tools go here — the former caches a browser-mcp session per user; the
+// latter stamps every scheduled job with metadata.userEmail so the fire
+// callback can route the result back.
 export function makeUserScopedSkills(userEmail: string) {
   return {
     ...makeHostedBrowserSkills(userEmail),
+    ...makeCronSkills(userEmail),
   } as const;
 }

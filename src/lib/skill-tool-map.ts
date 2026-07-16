@@ -60,6 +60,14 @@ export const ALWAYS_ON_TOOLS = [
   "hosted_browser_press_key",
   "hosted_browser_wait_for",
   "hosted_browser_read_page",
+  // Cron scheduling — backed by globalion/cron-mcp. Enabled by default so
+  // every user can say "every day at 8am send me a briefing" without
+  // toggling anything on /skills.
+  "cron_schedule",
+  "cron_list",
+  "cron_delete",
+  "cron_pause",
+  "cron_resume",
 ];
 
 // Given the set of skill ids enabled for a user, return the flat set of
