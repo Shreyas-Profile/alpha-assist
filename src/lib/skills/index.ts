@@ -20,8 +20,9 @@ import {
 
 // Provider-agnostic base skills (no per-user context needed).
 export const skills = {
-  // Server-side
-  find_opportunities: findOpportunitiesTool,
+  // Server-side — general web fetcher. Historically named find_opportunities
+  // and scoped to apprenticeship sites; now general-purpose.
+  fetch_url: findOpportunitiesTool,
   // Client-side (executed in the user's Chrome via chrome-agent extension)
   browser_new_tab: browserNewTab,
   browser_navigate: browserNavigate,

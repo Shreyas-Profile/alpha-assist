@@ -45,9 +45,11 @@ export const SKILL_TOOLS: Record<string, string[]> = {
   ],
 };
 
-// Tools that are always on (not gated by any skill). Only find_opportunities
-// stays always-on; set_reminder was replaced by the toggleable reminders skill.
-export const ALWAYS_ON_TOOLS = ["find_opportunities"];
+// Tools that are always on (not gated by any skill). fetch_url is a
+// general-purpose web fetcher — kept always-on because it's cheap and useful
+// for almost every query. (Historically this list held find_opportunities,
+// which was the narrow apprenticeships-only version of the same tool.)
+export const ALWAYS_ON_TOOLS = ["fetch_url"];
 
 // Given the set of skill ids enabled for a user, return the flat set of
 // chat tool names they should see.
