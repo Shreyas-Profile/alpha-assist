@@ -1,16 +1,18 @@
-// Telegram bot webhook for the Paperloft Assist sign-in bot.
+// Telegram bot webhook for @PaperloftAssistantBot.
 //
 // URL: /api/telegram/bot-webhook/<TELEGRAM_WEBHOOK_SECRET>
 //
-// Two incoming events matter:
+// Handles TWO things:
 //
-//   1. `/start` — user opened a fresh DM. We reply with a `request_contact`
-//      keyboard button. Only the user's real Telegram-account phone number
-//      can come back through that button (Telegram enforces this).
+//   1. `/start <nonce>` — deep-link from Settings → Connect Telegram. We look
+//      up the nonce, mark the sender's chat_id linked to that user's email,
+//      then reply "✅ Linked".
 //
-//   2. `message.contact` — user tapped Share. Telegram sends the phone number
-//      alongside chat/from info. We store the mapping in TelegramPhoneMap so
-//      /api/auth/otp/send (telegram) can find their chatId later.
+//   2. `/start` (no arg) — user found the bot organically. Reply with a
+//      short intro telling them to link from the Paperloft settings page.
+//
+// Every other inbound message is currently ignored — future work: forward
+// to the chat backend so users can talk to Paperloft over Telegram.
 
 import { NextResponse } from "next/server";
 import { sendTelegramToChatId } from "@/lib/telegram-bot";
@@ -18,57 +20,16 @@ import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-interface TgContact {
-  phone_number: string;
-  user_id?: number;
-  first_name?: string;
-}
-
 interface TgMessage {
   message_id: number;
   chat: { id: number; type: string };
   from?: { id: number; username?: string; first_name?: string };
   text?: string;
-  contact?: TgContact;
 }
 
 interface TgUpdate {
   update_id: number;
   message?: TgMessage;
-}
-
-const API = "https://api.telegram.org/bot";
-
-async function sendWithKeyboard(chatId: string, text: string): Promise<void> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return;
-  await fetch(`${API}${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      reply_markup: {
-        keyboard: [[{ text: "📱 Share my phone number", request_contact: true }]],
-        resize_keyboard: true,
-        one_time_keyboard: true,
-      },
-    }),
-  }).catch(() => undefined);
-}
-
-async function ackAndClearKeyboard(chatId: string, text: string): Promise<void> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return;
-  await fetch(`${API}${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      reply_markup: { remove_keyboard: true },
-    }),
-  }).catch(() => undefined);
 }
 
 export async function POST(
@@ -82,46 +43,58 @@ export async function POST(
   }
   const update = (await req.json().catch(() => null)) as TgUpdate | null;
   const msg = update?.message;
-  if (!msg) return NextResponse.json({ ok: true });
+  if (!msg?.text) return NextResponse.json({ ok: true });
 
   const chatId = String(msg.chat.id);
+  const text = msg.text.trim();
 
-  // --- Share Contact flow ------------------------------------------------
-  if (msg.contact?.phone_number) {
-    // Telegram may or may not include the leading "+" — normalise to E.164.
-    const raw = msg.contact.phone_number.trim();
-    const phone = raw.startsWith("+") ? raw : `+${raw}`;
-    await prisma.telegramPhoneMap
-      .upsert({
-        where: { phone },
-        create: {
-          phone,
-          chatId,
-          firstName: msg.contact.first_name ?? msg.from?.first_name ?? null,
-          username: msg.from?.username ?? null,
-        },
-        update: {
-          chatId,
-          firstName: msg.contact.first_name ?? msg.from?.first_name ?? null,
-          username: msg.from?.username ?? null,
-        },
-      })
-      .catch(() => undefined);
-    await ackAndClearKeyboard(
-      chatId,
-      `✅ Linked ${phone} to your Telegram.\n\nGo back to paperloft.regiq.in/signin, pick the Telegram tab, enter ${phone}, and hit "Send code".`,
-    );
-    return NextResponse.json({ ok: true });
-  }
-
-  // --- /start ------------------------------------------------------------
-  if (msg.text?.startsWith("/start")) {
-    await sendWithKeyboard(
-      chatId,
-      "Welcome to Paperloft Assist.\n\nTap the button below to share your phone number so I can send you sign-in codes and reminders.",
-    );
-    return NextResponse.json({ ok: true });
+  if (text.startsWith("/start")) {
+    const parts = text.split(/\s+/);
+    const nonce = parts[1];
+    if (nonce) {
+      await handleLinkNonce(chatId, nonce, msg).catch((err) =>
+        console.error("[tg-webhook] handleLinkNonce threw:", err),
+      );
+    } else {
+      await sendTelegramToChatId(
+        chatId,
+        "👋 This is the Paperloft Assist bot.\n\nTo connect this Telegram to your Paperloft account, open Settings → Connect Telegram on paperloft.uk and follow the button.",
+      ).catch(() => undefined);
+    }
   }
 
   return NextResponse.json({ ok: true });
+}
+
+async function handleLinkNonce(chatId: string, nonce: string, msg: TgMessage) {
+  const row = await prisma.telegramLinkNonce.findUnique({ where: { nonce } });
+  if (!row || row.usedAt || row.expiresAt < new Date()) {
+    await sendTelegramToChatId(
+      chatId,
+      "❌ That link expired. Go back to paperloft.uk → Settings → Connect Telegram and click the button again.",
+    ).catch(() => undefined);
+    return;
+  }
+  await prisma.telegramLink.upsert({
+    where: { userEmail: row.userEmail },
+    create: {
+      userEmail: row.userEmail,
+      chatId,
+      username: msg.from?.username ?? null,
+      firstName: msg.from?.first_name ?? null,
+    },
+    update: {
+      chatId,
+      username: msg.from?.username ?? null,
+      firstName: msg.from?.first_name ?? null,
+    },
+  });
+  await prisma.telegramLinkNonce.update({
+    where: { nonce },
+    data: { usedAt: new Date() },
+  });
+  await sendTelegramToChatId(
+    chatId,
+    `✅ Linked to ${row.userEmail}.\n\nYou're all set. Notifications and reminders from Paperloft will land in this chat.`,
+  ).catch(() => undefined);
 }

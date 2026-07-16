@@ -160,6 +160,35 @@ model UserChannelPref {
   @@map("user_channel_prefs")
 }
 
+// Post-signup Telegram link. Populated by /api/telegram/bot-webhook when the
+// user opens @PaperloftAssistantBot with a /start <nonce> deep-link generated
+// while they were signed into paperloft.uk. The nonce proves the two sides
+// (web session + Telegram user) belong to the same person, unspoofable.
+model TelegramLink {
+  userEmail String   @id
+  chatId    String
+  username  String?
+  firstName String?
+  linkedAt  DateTime @default(now())
+
+  @@index([chatId])
+  @@map("telegram_links")
+}
+
+// Short-lived nonces used to prove `web-session ↔ telegram-chat` linkage.
+// /api/telegram/link-init issues one; the bot webhook consumes it on
+// /start <nonce>. 10-min TTL, single-use.
+model TelegramLinkNonce {
+  nonce     String   @id
+  userEmail String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+  @@map("telegram_link_nonces")
+}
+
 // Phone → Telegram chatId mapping. Written by the bot webhook when a user
 // taps "Share Contact" — Telegram itself signs the phone number, so this is
 // how we trust that chatId X really belongs to phone +Y. Anyone can spoof

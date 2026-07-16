@@ -5,12 +5,17 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { isAdmin } from "@/lib/admin";
+import { prisma } from "@/lib/db";
+import { TelegramConnect } from "./telegram-connect";
 
 export default async function SettingsPage() {
   const session = await auth();
   const user = session?.user;
   if (!user?.email) redirect("/signin");
   const admin = isAdmin(user.email);
+  const telegramLink = await prisma.telegramLink
+    .findUnique({ where: { userEmail: user.email } })
+    .catch(() => null);
 
   return (
     <AppShell>
@@ -71,6 +76,15 @@ export default async function SettingsPage() {
                 </p>
               </div>
             )}
+          </section>
+
+          {/* Telegram */}
+          <section className="p-6 rounded-xl border border-border bg-foreground/[0.02]">
+            <h2 className="font-semibold mb-4">Telegram</h2>
+            <TelegramConnect
+              linkedUsername={telegramLink?.username ?? null}
+              linkedFirstName={telegramLink?.firstName ?? null}
+            />
           </section>
 
           {/* Danger zone */}

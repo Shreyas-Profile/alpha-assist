@@ -35,10 +35,20 @@ export async function sendWhatsApp(toE164: string, message: string): Promise<Wha
       text: message,
     }),
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    return { ok: false, reason: `wasenderapi ${res.status}: ${body.slice(0, 200)}` };
+  // wasenderapi returns HTTP 200 with `{success:false,message:"…"}` when the
+  // request was well-formed but delivery couldn't happen (e.g. the WhatsApp
+  // session on their dashboard isn't linked, subscription lapsed, etc.).
+  // Treat that as failure — otherwise we silently drop OTPs.
+  const json = (await res.json().catch(() => ({}))) as {
+    success?: boolean;
+    message?: string;
+    messageId?: string;
+  };
+  if (!res.ok || json.success === false) {
+    const reason =
+      json.message ??
+      `wasenderapi HTTP ${res.status}`;
+    return { ok: false, reason };
   }
-  const json = (await res.json().catch(() => ({}))) as { messageId?: string };
   return { ok: true, messageId: json.messageId };
 }
