@@ -25,7 +25,7 @@ import { prisma } from "./db";
 
 // Skills every user gets by default, on every sign-in. `enableSkill` is
 // idempotent, so re-inserting is a cheap no-op after the first time.
-const DEFAULT_SKILLS = ["browser_agent", "reminders", "telegram_mcp"];
+const DEFAULT_SKILLS = ["browser_agent", "reminders"];
 
 function telegramEmail(id: string): string {
   return `tg-${id}@telegram.paperloft.local`;

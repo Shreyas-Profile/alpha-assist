@@ -25,17 +25,10 @@ type SkillEntry = {
   publisher?: string;
 };
 
+// telegram_mcp (Telegram bridge — BYO-bot MCP marketplace item) removed.
+// Redundant now that /skills shows a first-class Telegram delivery card
+// backed by @PaperloftAssistantBot at the top of this page.
 const SKILLS: SkillEntry[] = [
-  {
-    id: "telegram_mcp",
-    name: "Telegram bridge",
-    category: "External MCP · Globalion",
-    description:
-      "Bidirectional Telegram ⇆ agent bridge. Message your Telegram bot; your MCP-connected agent pulls the message, thinks, and pushes a reply back. No LLM in the platform.",
-    price: "Free",
-    needs: "Google or GitHub sign-in + a BotFather token",
-    publisher: "Globalion (Shreyas)",
-  },
   {
     id: "video_render_mcp",
     name: "Video render",
