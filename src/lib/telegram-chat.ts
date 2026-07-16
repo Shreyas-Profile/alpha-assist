@@ -118,10 +118,12 @@ export async function handleTelegramMessage(
     // If the model returned no text but DID call tools, don't drop them on
     // the floor with "(no reply)" — surface what actually happened.
     if (!reply) {
-      const toolCalls = result.steps
-        ?.flatMap((s) => s.toolCalls ?? [])
-        .map((c) => c.toolName)
-        .filter(Boolean) ?? [];
+      const toolCalls: string[] = [];
+      for (const step of result.steps ?? []) {
+        for (const call of step.toolCalls ?? []) {
+          if (call?.toolName) toolCalls.push(call.toolName);
+        }
+      }
       const summary = toolCalls.length
         ? `I called ${toolCalls.length} tools (${[...new Set(toolCalls)].join(", ")}) but didn't have anything final to say — the flow probably got stuck partway. Try being more specific about the site or step you want me to try.`
         : "I couldn't come up with anything useful. Try rephrasing?";
