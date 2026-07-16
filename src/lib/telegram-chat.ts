@@ -1,26 +1,41 @@
 // Handle a plain-text message from a linked Telegram user.
 //
-// Called by the bot webhook when the message is not a slash-command. We
-// resolve chatId → userEmail via telegram_links, load the last N messages
-// of a dedicated Telegram conversation, call the LLM, persist both sides,
-// and return the reply text so the webhook can send it back via the bot.
+// Same LLM pipeline as web /chat — resolves chatId → userEmail via
+// telegram_links, loads last N messages of a dedicated Telegram conversation,
+// calls the LLM with the user's enabled skills wired as tools, persists both
+// sides, returns the reply text so the webhook can DM it back.
 //
-// Deliberately minimal for now:
-//   - no tool-calling (skills stay on the web chat surface)
-//   - one conversation per Telegram chat, keyed by chatId
-//   - short reply (Telegram's own limit is 4096 chars; we cap earlier)
+// Tools are gated by the user's /skills toggles (same as web). Multi-step
+// tool loops are capped by stopWhen so we don't hang the webhook.
 
-import { generateText, type ModelMessage } from "ai";
+import { generateText, stepCountIs, type ModelMessage } from "ai";
 import { prisma } from "./db";
 import { CHAT_MODEL, SYSTEM_PROMPT, openrouter } from "./openrouter";
 import { appendMessage } from "./chat";
+import { skills, makeUserScopedSkills } from "./skills";
+import { makeLinkedInSkill } from "./skills/linkedin-post";
+import { listEnabledSkills } from "./enabled-skills";
+import { toolsForEnabledSkills } from "./skill-tool-map";
+import { createReminderSkill } from "./skills/nova-reminders";
+import { makeReminderCtx } from "./reminders-adapter";
 
 const HISTORY_LIMIT = 20;
-const TELEGRAM_MAX_CHARS = 4000; // Telegram's cap is 4096, leave headroom.
+const TELEGRAM_MAX_CHARS = 4000; // Telegram's cap is 4096; leave headroom.
 
 const CONNECT_HINT =
   "You're not linked to a Paperloft account yet.\n\n" +
   "Open https://paperloft.uk/settings and hit 'Connect Telegram bot' to link this chat to your account. Then message me here and I'll reply as your assistant.";
+
+function filterTools<T extends Record<string, unknown>>(
+  allTools: T,
+  allow: Set<string>,
+): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [name, tool] of Object.entries(allTools)) {
+    if (allow.has(name)) out[name] = tool;
+  }
+  return out as Partial<T>;
+}
 
 export async function handleTelegramMessage(
   chatId: string,
@@ -28,6 +43,7 @@ export async function handleTelegramMessage(
 ): Promise<string> {
   const link = await prisma.telegramLink.findFirst({ where: { chatId } });
   if (!link) return CONNECT_HINT;
+  const email = link.userEmail;
 
   const convId = `tg_${chatId}`;
   const existing = await prisma.conversation.findUnique({ where: { id: convId } });
@@ -35,7 +51,7 @@ export async function handleTelegramMessage(
     await prisma.conversation.create({
       data: {
         id: convId,
-        userEmail: link.userEmail,
+        userEmail: email,
         title: `Telegram · ${link.firstName ?? link.username ?? chatId}`,
       },
     });
@@ -55,12 +71,38 @@ export async function handleTelegramMessage(
     content: m.content,
   }));
 
+  const reminderSkill = createReminderSkill(makeReminderCtx(email));
+  const enabled = await listEnabledSkills(email);
+  const allowed = toolsForEnabledSkills(enabled);
+  const now = new Date();
+  const timeContext =
+    `Current UTC time: ${now.toISOString()} (${now.toUTCString()}). ` +
+    `When the user says relative times ("tomorrow 9am", "in 2 hours", "tonight 8pm"), ` +
+    `resolve them against this timestamp and convert to ISO 8601 UTC before calling any tool.`;
+
   let reply: string;
   try {
     const result = await generateText({
       model: openrouter.chat(CHAT_MODEL),
-      system: SYSTEM_PROMPT,
+      system:
+        timeContext + "\n\n" +
+        SYSTEM_PROMPT +
+        (enabled.has("reminders") ? "\n\n" + reminderSkill.systemPrompt : "") +
+        "\n\nYou are speaking to the user on Telegram. Keep replies short and readable on a phone. Telegram supports basic markdown (**bold**, `code`) but not headings or tables.",
       messages,
+      tools: filterTools(
+        {
+          ...skills,
+          ...makeUserScopedSkills(email),
+          ...reminderSkill.tools,
+          linkedin_post: makeLinkedInSkill(email),
+        },
+        allowed,
+      ),
+      stopWhen: stepCountIs(5),
+      providerOptions: {
+        openai: { parallelToolCalls: false },
+      },
     });
     reply = result.text.trim() || "(no reply)";
   } catch (err) {
