@@ -89,6 +89,20 @@ async function handleLinkNonce(chatId: string, nonce: string, msg: TgMessage) {
       firstName: msg.from?.first_name ?? null,
     },
   });
+  // Mirror the chatId onto UserChannelPref — the nova-reminders scheduler
+  // reads *that* row when picking a delivery channel. Without this the link
+  // is visible in Settings but reminders keep firing to WhatsApp only.
+  await prisma.userChannelPref
+    .upsert({
+      where: { userId: row.userEmail },
+      create: {
+        userId: row.userEmail,
+        telegramChatId: chatId,
+        defaultChannel: "telegram",
+      },
+      update: { telegramChatId: chatId },
+    })
+    .catch(() => undefined);
   await prisma.telegramLinkNonce.update({
     where: { nonce },
     data: { usedAt: new Date() },
