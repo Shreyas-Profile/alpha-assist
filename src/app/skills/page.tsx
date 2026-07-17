@@ -33,6 +33,16 @@ type SkillEntry = {
 // Hetzner — same names, always available, no local machine needed.
 const SKILLS: SkillEntry[] = [
   {
+    id: "docs_mcp",
+    name: "Docs (RAG)",
+    category: "External MCP · Globalion",
+    description:
+      "Upload any Word/Excel/PDF/PowerPoint and query it back with page citations. Vision-model extraction handles scans, charts, and tables — nothing gets lost in plain-text stripping. On enable, we provision you a private tenant on docs.regiq.in — your docs are never visible to other paperloft users. First 100 pages free from Paperloft's platform pool; more available on request.",
+    price: "100 pages free · overage from Paperloft pool",
+    needs: "Google sign-in",
+    publisher: "Globalion (Shreyas)",
+  },
+  {
     id: "video_render_mcp",
     name: "Video render",
     category: "External MCP · Globalion",
@@ -48,7 +58,7 @@ const SKILLS: SkillEntry[] = [
     category: "Notifications · WhatsApp",
     description:
       "General reminders (meetings, birthdays, deadlines) plus medication schedules with Taken/Snooze/Skip acks and prescription intake — snap a prescription photo or paste text and the assistant auto-schedules the meds and follow-up. Delivered via WhatsApp; Telegram coming.",
-    price: "Free",
+    price: "Free · limit 200 active reminders",
     needs: "WhatsApp sign-in (or your phone number)",
     publisher: "Globalion (Shreyas, forked from Pakki10/nova-reminders)",
   },

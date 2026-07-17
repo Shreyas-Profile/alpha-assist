@@ -12,6 +12,18 @@ export const SKILL_TOOLS: Record<string, string[]> = {
   // Hosted MCPs — remote-tool wiring hasn't shipped yet, so enabling these
   // records the toggle but doesn't add tools to the LLM's toolbelt.
   video_render_mcp: [],
+  // Docs (docs-mcp) — vector RAG over any uploaded document. Toggling this
+  // on provisions a sub-account on docs.regiq.in via /api/platform/provision-user
+  // and stores the key in SkillConnection. Every tool call routes through
+  // that per-user key so data stays isolated at the docs-mcp DB level.
+  docs_mcp: [
+    "docs_upload",
+    "docs_list",
+    "docs_get",
+    "docs_search",
+    "docs_delete",
+    "docs_balance",
+  ],
   // Nova-reminders skill — general/medication/appointment reminders plus
   // prescription intake (image/PDF/text).
   reminders: [

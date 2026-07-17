@@ -33,6 +33,27 @@ export function reminderCreate(ctx: SkillContext) {
       prescriptionId: z.string().optional(),
     }),
     execute: async (input) => {
+      // Hard cap: 200 active reminders per user. Prevents the DB and the
+      // scheduler from blowing up if an agent creates reminders in a loop.
+      // Users see a clear "delete some to add more" message.
+      const activeCount = await ctx.prisma.reminder.count({
+        where: { userId: ctx.userId, status: { in: ["pending", "sent"] } },
+      });
+      if (activeCount >= 200) {
+        throw new Error(
+          `You already have ${activeCount} active reminders (limit 200). Delete or cancel some first, then try again.`,
+        );
+      }
+
+      // Minimum recurrence 1 minute — hourly and above are safe by definition.
+      // We only need to guard against the (rare) cron:<expr> case where the
+      // agent might supply an interval faster than a minute.
+      if (input.recurrence && !["none", "hourly", "daily", "weekdays", "weekly", "monthly", "yearly"].includes(input.recurrence)) {
+        throw new Error(
+          `unsupported recurrence "${input.recurrence}". Use one of: none, hourly, daily, weekdays, weekly, monthly, yearly.`,
+        );
+      }
+
       const type = input.type ?? "general";
       const defaultAck =
         type === "medication" ? "tap" : type === "appointment" ? "tap" : "none";

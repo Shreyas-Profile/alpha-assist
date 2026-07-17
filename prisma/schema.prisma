@@ -70,6 +70,23 @@ model EnabledSkill {
   @@index([userEmail])
 }
 
+// Sub-account credentials paperloft provisions on external MCP skill servers
+// (docs.regiq.in, cron.regiq.in, ...) on behalf of paperloft users.
+// One row per (userEmail, skillId) once the user has enabled that skill.
+// `remoteApiKey` is stored plaintext — the skill server only knows its sha256
+// hash and cannot re-derive the raw. Rotating on the skill side means we
+// need to re-provision here.
+model SkillConnection {
+  userEmail     String
+  skillId       String    // e.g. "docs_mcp"
+  remoteUserId  String    // id of the User row on the remote MCP server
+  remoteApiKey  String    // raw Bearer token to call the remote MCP with
+  provisionedAt DateTime  @default(now())
+
+  @@id([userEmail, skillId])
+  @@index([userEmail])
+}
+
 // ---- Reminders skill (vendored from Pakki10/nova-reminders MIT) ----------
 // Replaces the earlier flat `Reminder` model. `userId` here stores the
 // user's email — paperloft-assist identifies users by JWT email and

@@ -7,18 +7,25 @@
 import { findOpportunitiesTool } from "./find-opportunities";
 import { makeBrowserSkills } from "../hosted-browser";
 import { makeCronSkills } from "../hosted-cron";
+import { makeDocsSkills } from "../hosted-docs";
 
 // Provider-agnostic base skills (no per-user context needed).
 export const skills = {
   fetch_url: findOpportunitiesTool,
 } as const;
 
-// Per-user skills that need the authed userEmail. Browser tools cache a
-// browser-mcp session per user; cron tools stamp every scheduled job with
-// metadata.userEmail so the fire callback can route the result back.
+// Per-user skills that need the authed userEmail.
+//
+// Note on docs_* tools: they always exist on the toolbelt but throw a friendly
+// "connect the Docs skill first" error unless the user has toggled it on
+// (which provisions their sub-account on docs-mcp). The chat route's tool
+// filter drops them unless enabled, so the LLM won't try to call them
+// unbidden. Keeping them here lets the docs_mcp toggle flip them into the
+// LLM's toolbelt without extra plumbing.
 export function makeUserScopedSkills(userEmail: string) {
   return {
     ...makeBrowserSkills(userEmail),
     ...makeCronSkills(userEmail),
+    ...makeDocsSkills(userEmail),
   } as const;
 }
