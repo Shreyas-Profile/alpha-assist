@@ -57,8 +57,8 @@ const SKILLS: SkillEntry[] = [
     name: "Reminders & Prescriptions",
     category: "Notifications · WhatsApp",
     description:
-      "General reminders (meetings, birthdays, deadlines) plus medication schedules with Taken/Snooze/Skip acks and prescription intake — snap a prescription photo or paste text and the assistant auto-schedules the meds and follow-up. Delivered via WhatsApp; Telegram coming.",
-    price: "Free · limit 200 active reminders",
+      "General reminders (meetings, birthdays, deadlines) plus medication schedules with Taken/Snooze/Skip acks and prescription intake — snap a prescription photo or paste text and the assistant auto-schedules the meds and follow-up. Delivered via WhatsApp; Telegram coming. Fair-use cap: 200 active reminders per account, minimum recurrence 1 hour (so the fleet doesn't blow up).",
+    price: "Free · max 200 active",
     needs: "WhatsApp sign-in (or your phone number)",
     publisher: "Globalion (Shreyas, forked from Pakki10/nova-reminders)",
   },
