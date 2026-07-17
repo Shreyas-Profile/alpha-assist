@@ -57,12 +57,15 @@ export async function POST(
         // Roll back the enable so the user can retry cleanly rather than
         // being stuck in a "toggled on but not connected" state.
         await disableSkill(userEmail, skillId).catch(() => undefined);
+        // Use 400, NOT 502: Cloudflare intercepts 5xx from origin and
+        // replaces the response body with its own generic error page, so the
+        // client never sees our helpful message. 400 lets it through.
         return NextResponse.json(
           {
             error: "provision_failed",
             message: (err as Error).message,
           },
-          { status: 502 },
+          { status: 400 },
         );
       }
     }
