@@ -18,6 +18,7 @@ import { listEnabledSkills } from "./enabled-skills";
 import { toolsForEnabledSkills } from "./skill-tool-map";
 import { createReminderSkill } from "./skills/nova-reminders";
 import { makeReminderCtx } from "./reminders-adapter";
+import { makeUserByoSkills, listByoToolNames } from "./user-skills";
 
 const HISTORY_LIMIT = 20;
 const TELEGRAM_MAX_CHARS = 4000; // Telegram's cap is 4096; leave headroom.
@@ -74,6 +75,16 @@ export async function handleTelegramMessage(
   const reminderSkill = createReminderSkill(makeReminderCtx(email));
   const enabled = await listEnabledSkills(email);
   const allowed = toolsForEnabledSkills(enabled);
+
+  // BYO skills — same wiring as the web /chat route. Fetch the tool
+  // factory + the allowed-name set in parallel and merge both into the
+  // filter. Namespacing (`byo_<slug>__<tool>`) is done inside
+  // makeUserByoSkills so BYO tool names can never collide with built-ins.
+  const [byoTools, byoNames] = await Promise.all([
+    makeUserByoSkills(email),
+    listByoToolNames(email),
+  ]);
+  for (const n of byoNames) allowed.add(n);
   const now = new Date();
   const timeContext =
     `Current UTC time: ${now.toISOString()} (${now.toUTCString()}). ` +
@@ -97,6 +108,7 @@ export async function handleTelegramMessage(
           ...skills,
           ...makeUserScopedSkills(email),
           ...reminderSkill.tools,
+          ...byoTools,
           linkedin_post: makeLinkedInSkill(email),
         },
         allowed,
