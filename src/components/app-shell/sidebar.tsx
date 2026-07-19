@@ -75,11 +75,15 @@ export function Sidebar({
       )}
 
       <aside
+        // Mobile: fixed drawer, plain hidden/visible toggle. No slide-in
+        // animation — tried translate-x-*, inline transform, and animated
+        // `left`, all hit a Tailwind v4 CSS-var / cascade quirk where the
+        // drawer stayed off-screen despite the correct inline style. A
+        // straight hidden/visible flip is reliable and good enough.
         className={cn(
           "border-r border-border/50 bg-background flex-col",
-          // Mobile: fixed drawer, animated in from the left
-          "lg:hidden fixed inset-y-0 left-0 z-50 w-64 flex transition-transform duration-200 ease-out",
-          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          "lg:hidden fixed inset-y-0 left-0 z-50 w-64",
+          mobileOpen ? "flex" : "hidden",
         )}
       >
         <MobileHeader onClose={() => setMobileOpen(false)} />
