@@ -5,6 +5,9 @@
 //   - Credentials (telegram) — Telegram Login Widget hand-off; the
 //     /api/auth/telegram-login route validates the HMAC before the browser
 //     ever reaches this authorize() call, so the id here is already trusted.
+//   - Credentials (whatsapp) — phone + OTP. The code was delivered by
+//     /api/auth/otp/send via wasenderapi; here we verify it and mint a
+//     synthetic <phone>@phone.paperloft.local identity.
 //
 // Identity unification: if a user connected their Telegram to a Google
 // account (via Settings → Connect Telegram → deep-link → bot /start), a
@@ -22,6 +25,10 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { enableSkill } from "./enabled-skills";
 import { prisma } from "./db";
+import { verifySignInCode, syntheticEmail } from "./otp";
+
+const E164 = /^\+[1-9]\d{6,14}$/;
+const CODE = /^\d{6}$/;
 
 // Skills every user gets by default, on every sign-in. `enableSkill` is
 // idempotent, so re-inserting is a cheap no-op after the first time.
@@ -76,6 +83,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name,
           image: String(creds?.photoUrl ?? "") || undefined,
         };
+      },
+    }),
+    Credentials({
+      id: "whatsapp",
+      name: "WhatsApp",
+      credentials: {
+        phone: { label: "Phone (E.164)", type: "text" },
+        code: { label: "One-time code", type: "text" },
+      },
+      async authorize(creds) {
+        const phone = String(creds?.phone ?? "").trim();
+        const code = String(creds?.code ?? "").trim();
+        if (!E164.test(phone) || !CODE.test(code)) return null;
+        const ok = await verifySignInCode("whatsapp", phone, code);
+        if (!ok) return null;
+        const email = syntheticEmail(phone);
+        // Last-4 digits for a friendly display name that doesn't leak the full
+        // number in server logs or the header avatar tooltip.
+        const last4 = phone.slice(-4);
+        return { id: email, email, name: `WhatsApp ···${last4}` };
       },
     }),
   ],

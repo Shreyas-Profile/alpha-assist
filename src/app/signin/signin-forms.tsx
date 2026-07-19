@@ -1,15 +1,18 @@
 "use client";
 
-// Two-provider sign-in — Google (OAuth) or Telegram (Login Widget).
-// Telegram widget is a first-party script from telegram.org that renders a
-// button; on click, Telegram authenticates the user and redirects the
-// browser to `data-auth-url` with signed query params. Our server route at
-// /api/auth/telegram-login verifies the HMAC before completing sign-in.
+// Three-provider sign-in — Google (OAuth), Telegram (Login Widget),
+// or WhatsApp (phone + OTP delivered by wasenderapi).
+//
+// WhatsApp flow: user enters an E.164 phone → POST /api/auth/otp/send
+// (wasenderapi delivers a 6-digit code) → user enters code → we call
+// signIn("whatsapp", {phone, code, callbackUrl}) which hits the WhatsApp
+// Credentials provider in lib/auth.ts, which verifies the code and mints a
+// synthetic <phone>@phone.paperloft.local identity.
 
 import { useEffect, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 
-type Tab = "google" | "telegram";
+type Tab = "google" | "whatsapp" | "telegram";
 
 const BOT_USERNAME = "PaperloftAssistantBot";
 
@@ -17,11 +20,13 @@ export function SignInForms({ callbackUrl }: { callbackUrl: string }) {
   const [tab, setTab] = useState<Tab>("google");
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-foreground/[0.05] border border-border">
+      <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-foreground/[0.05] border border-border">
         <TabBtn active={tab === "google"} onClick={() => setTab("google")}>Google</TabBtn>
+        <TabBtn active={tab === "whatsapp"} onClick={() => setTab("whatsapp")}>WhatsApp</TabBtn>
         <TabBtn active={tab === "telegram"} onClick={() => setTab("telegram")}>Telegram</TabBtn>
       </div>
       {tab === "google" && <GoogleForm callbackUrl={callbackUrl} />}
+      {tab === "whatsapp" && <WhatsAppForm callbackUrl={callbackUrl} />}
       {tab === "telegram" && <TelegramForm />}
     </div>
   );
@@ -60,6 +65,157 @@ function GoogleForm({ callbackUrl }: { callbackUrl: string }) {
     >
       Continue with Google
     </button>
+  );
+}
+
+function WhatsAppForm({ callbackUrl }: { callbackUrl: string }) {
+  const [stage, setStage] = useState<"phone" | "code">("phone");
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const sendCode = async () => {
+    setError(null);
+    setInfo(null);
+    // Client-side E.164 check so users get instant feedback on obvious typos.
+    // Real validation lives on the server.
+    if (!/^\+[1-9]\d{6,14}$/.test(phone.trim())) {
+      setError("Phone must be in international format, e.g. +447700900123.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "whatsapp", phone: phone.trim() }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error ?? `HTTP ${res.status}`);
+      } else {
+        setStage("code");
+        setInfo(`Code sent to ${phone.trim()} on WhatsApp. Check your chats.`);
+      }
+    } catch (err) {
+      setError((err as Error).message || "network error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verify = async () => {
+    setError(null);
+    if (!/^\d{6}$/.test(code.trim())) {
+      setError("Code must be 6 digits.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await signIn("whatsapp", {
+        phone: phone.trim(),
+        code: code.trim(),
+        callbackUrl,
+        redirect: false,
+      });
+      if (res?.error) {
+        setError("Wrong or expired code. Try again, or send a new one.");
+      } else if (res?.ok) {
+        // Manual redirect since we passed redirect:false so we could catch errors inline.
+        window.location.href = res.url ?? callbackUrl;
+      } else {
+        setError("Sign-in failed. Try again.");
+      }
+    } catch (err) {
+      setError((err as Error).message || "network error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        We&apos;ll send a 6-digit code to your WhatsApp. Enter your number in
+        international format (with country code).
+      </p>
+
+      {stage === "phone" && (
+        <>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+447700900123"
+            className="w-full px-3 py-2 rounded-lg border border-border bg-background font-mono text-sm"
+            disabled={busy}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") sendCode();
+            }}
+          />
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <button
+            type="button"
+            onClick={sendCode}
+            disabled={busy || !phone}
+            className="w-full px-4 py-2.5 rounded-lg bg-foreground text-background font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? "Sending…" : "Send code"}
+          </button>
+        </>
+      )}
+
+      {stage === "code" && (
+        <>
+          {info && (
+            <div className="rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-500">
+              {info}
+            </div>
+          )}
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="123456"
+            className="w-full px-3 py-2 rounded-lg border border-border bg-background font-mono text-lg tracking-widest text-center"
+            disabled={busy}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") verify();
+            }}
+          />
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <button
+            type="button"
+            onClick={verify}
+            disabled={busy || code.length !== 6}
+            className="w-full px-4 py-2.5 rounded-lg bg-foreground text-background font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? "Verifying…" : "Verify + sign in"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStage("phone");
+              setCode("");
+              setInfo(null);
+              setError(null);
+            }}
+            disabled={busy}
+            className="w-full text-xs text-muted-foreground hover:text-foreground underline"
+          >
+            ← Use a different number
+          </button>
+        </>
+      )}
+
+      <p className="text-[11px] text-muted-foreground">
+        Standard WhatsApp rates apply. Code expires in 10 minutes.
+      </p>
+    </div>
   );
 }
 
