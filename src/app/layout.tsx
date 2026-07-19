@@ -20,6 +20,14 @@ export const metadata: Metadata = {
     "A general-purpose AI assistant with pluggable skills, chat history, and document uploads.",
 };
 
+// Mobile viewport — without this Next.js still applies a decent default,
+// but pinning it stops mobile Safari zooming out on landscape.
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

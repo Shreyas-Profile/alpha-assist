@@ -47,7 +47,7 @@ export function Sidebar({
   return (
     <>
       {/* Mobile top-bar with hamburger — only visible under md */}
-      <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-border/50 bg-background/95 backdrop-blur">
+      <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-border/50 bg-background/95 backdrop-blur">
         <Link href="/chat" className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-md bg-foreground text-background flex items-center justify-center text-xs font-bold">
             P
@@ -70,7 +70,7 @@ export function Sidebar({
           type="button"
           aria-label="Close menu"
           onClick={() => setMobileOpen(false)}
-          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
         />
       )}
 
@@ -78,7 +78,7 @@ export function Sidebar({
         className={cn(
           "border-r border-border/50 bg-background flex-col",
           // Mobile: fixed drawer, animated in from the left
-          "md:hidden fixed inset-y-0 left-0 z-50 w-64 flex transition-transform duration-200 ease-out",
+          "lg:hidden fixed inset-y-0 left-0 z-50 w-64 flex transition-transform duration-200 ease-out",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -91,8 +91,9 @@ export function Sidebar({
         />
       </aside>
 
-      {/* Desktop sidebar — sticky, always visible on md+ */}
-      <aside className="hidden md:flex md:w-56 shrink-0 border-r border-border/50 bg-foreground/[0.02] flex-col h-screen sticky top-0">
+      {/* Desktop sidebar — sticky, always visible on lg+ (raised from md so
+          tablets/narrow desktops don't have the sidebar eating half the width). */}
+      <aside className="hidden lg:flex lg:w-56 shrink-0 border-r border-border/50 bg-foreground/[0.02] flex-col h-screen sticky top-0">
         <div className="px-4 py-4 border-b border-border/50">
           <Link href="/chat" className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-md bg-foreground text-background flex items-center justify-center text-sm font-bold">
