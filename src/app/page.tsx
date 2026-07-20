@@ -56,7 +56,7 @@ function Nav() {
             href="/signin?callbackUrl=/chat"
             className="rounded-lg border border-border text-sm font-medium px-3.5 py-2 hover:bg-foreground/5 transition"
           >
-            Sign in
+            Log in
           </Link>
           <Link
             href="/signin?callbackUrl=/chat"
@@ -313,7 +313,7 @@ function Footer() {
             {OWNER_PHONE_DISPLAY}
           </a>
           <Link href="/signin?callbackUrl=/chat" className="hover:text-foreground transition">
-            Sign in
+            Log in
           </Link>
         </div>
       </div>
