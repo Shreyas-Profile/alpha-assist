@@ -11,7 +11,7 @@
 // lib/auth.ts (existing sessions keep working, admin backdoor via Google
 // stays alive) but no UI surfaces them anymore.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 
 // Default country code shown pre-filled in the phone input. Most users are
@@ -37,7 +37,58 @@ export function SignInForms({ callbackUrl }: { callbackUrl: string }) {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  // Trace on mount — confirms the client component hydrated at all. If we
+  // see no mount events for a user reporting "clicked button, nothing
+  // happened," their page never became interactive (JS bundle failed to
+  // load or crashed on hydration).
+  useEffect(() => {
+    trace("mount");
+    // Catch any uncaught JS error on the page and log it. Sign-in errors
+    // that used to fail silently on old iOS Safari will now surface.
+    const onErr = (e: ErrorEvent) => {
+      trace("window:error", { msg: e.message, src: e.filename, line: e.lineno });
+    };
+    const onRej = (e: PromiseRejectionEvent) => {
+      trace("window:rejection", { reason: String(e.reason).slice(0, 200) });
+    };
+    window.addEventListener("error", onErr);
+    window.addEventListener("unhandledrejection", onRej);
+    return () => {
+      window.removeEventListener("error", onErr);
+      window.removeEventListener("unhandledrejection", onRej);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Diagnostic tap. Fires-and-forgets — never awaits, never throws, never
+  // blocks the sign-in flow. Backend logs the event so we can see, from a
+  // user's device we can't inspect, whether their click even reached the
+  // handler.
+  const trace = (event: string, extra: Record<string, unknown> = {}) => {
+    try {
+      const body = JSON.stringify({
+        event,
+        stage,
+        phoneLen: phone.length,
+        phoneStartsWithPlus: phone.startsWith("+"),
+        busy,
+        hasError: !!error,
+        ...extra,
+      });
+      // keepalive so the request completes even if the page unloads.
+      void fetch("/api/debug/client-event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => undefined);
+    } catch {
+      // Never let diagnostics break the flow.
+    }
+  };
+
   const sendCode = async () => {
+    trace("sendCode:start");
     setError(null);
     setInfo(null);
     const p = phone.trim();
@@ -45,6 +96,7 @@ export function SignInForms({ callbackUrl }: { callbackUrl: string }) {
       // Explicit empty/default-only check so users get a useful message
       // instead of the generic "international format" one when they hit
       // the button with just "+91" in the field.
+      trace("sendCode:invalid-phone", { p });
       setError(
         p === "" || p === DEFAULT_DIAL_CODE
           ? `Type your phone number after ${DEFAULT_DIAL_CODE}. Example: ${DEFAULT_DIAL_CODE}9876543210.`
@@ -54,12 +106,14 @@ export function SignInForms({ callbackUrl }: { callbackUrl: string }) {
     }
     setBusy(true);
     try {
+      trace("sendCode:fetch-start");
       const res = await fetch("/api/auth/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: "whatsapp", phone: phone.trim() }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
+      trace("sendCode:fetch-done", { status: res.status, err: data.error });
       if (!res.ok) {
         setError(data.error ?? `HTTP ${res.status}`);
       } else {
@@ -67,7 +121,9 @@ export function SignInForms({ callbackUrl }: { callbackUrl: string }) {
         setInfo(`Code sent to ${phone.trim()} on WhatsApp. Check your chats.`);
       }
     } catch (err) {
-      setError((err as Error).message || "network error");
+      const msg = (err as Error).message || "network error";
+      trace("sendCode:threw", { msg });
+      setError(msg);
     } finally {
       setBusy(false);
     }
@@ -144,7 +200,13 @@ export function SignInForms({ callbackUrl }: { callbackUrl: string }) {
           */}
           <button
             type="button"
-            onClick={sendCode}
+            onClick={() => {
+              // Trace at the most upstream point. If we see 'button:click'
+              // in the log but no 'sendCode:start', React hydration is
+              // broken or sendCode threw synchronously.
+              trace("button:click");
+              sendCode();
+            }}
             disabled={busy}
             className="w-full px-4 py-3 rounded-lg bg-foreground text-background font-semibold hover:opacity-90 disabled:opacity-50"
           >
