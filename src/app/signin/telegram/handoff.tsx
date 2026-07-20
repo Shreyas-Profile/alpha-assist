@@ -21,11 +21,12 @@ export function TelegramHandoff() {
       firstName: params.get("first_name") ?? "",
       username: params.get("username") ?? "",
       photoUrl: params.get("photo_url") ?? "",
-      // Route to the phone-collection step. That page immediately checks
-      // whether we already have a phone for this user; if we do, it
-      // redirects straight to /chat. So returning users see no extra step,
-      // first-timers see the phone prompt once.
-      callbackUrl: "/signin/telegram/phone",
+      // Straight to the "which chat is the bot?" explainer. We don't
+      // collect a phone number — Telegram delivers via chatId (auto-saved
+      // in user_channel_prefs by events.signIn), so a phone adds friction
+      // for zero delivery benefit. Users can add one later in Settings if
+      // they want WhatsApp/SMS fallback.
+      callbackUrl: "/signin/telegram/done",
     });
   }, [params]);
 
