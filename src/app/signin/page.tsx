@@ -23,9 +23,10 @@ export default async function SignInPage({
           <div className="w-10 h-10 rounded-lg bg-foreground text-background flex items-center justify-center font-bold mx-auto">
             P
           </div>
-          <h1 className="text-2xl font-semibold">Sign in to Paperloft Assist</h1>
+          <h1 className="text-2xl font-semibold">Get started</h1>
           <p className="text-muted-foreground text-sm">
-            Sign in with your WhatsApp number.
+            Enter your WhatsApp number — new or returning, it&apos;s the same
+            one-step flow. No password.
           </p>
         </div>
         {error ? (
