@@ -146,18 +146,39 @@ export async function handleTelegramMessage(
     // the floor with "(no reply)" — surface what actually happened.
     if (!reply && toolCalls.length === 0) {
       // Haiku returns empty when the conversation history contains prior
-      // "I couldn't come up with anything useful" assistant turns —
-      // pattern-matches and mimics. Retry with ONLY the current user
-      // message, no history, minimal system.
-      console.warn(`[telegram-chat] empty reply — retrying clean`);
+      // fallback/refusal turns — pattern-matches and mimics. Retry with
+      // ONLY the current user message + a shorter system, BUT keep the
+      // skill tools + skill prompts. Previous version stripped tools and
+      // caused the bot to hallucinate "I can't set reminders" (Pawan bug).
+      console.warn(`[telegram-chat] empty reply — retrying clean-history`);
       try {
         const retry = await generateText({
           model: openrouter.chat(CHAT_MODEL),
-          system: "You are Paperloft Assistant, a friendly AI. Reply warmly and briefly. Never return empty text. If greeted, greet back and offer one concrete example (reminders, browsing, docs).",
+          system:
+            SYSTEM_PROMPT +
+            (enabled.has("reminders") ? "\n\n" + reminderSkill.systemPrompt : "") +
+            "\n\nYou are speaking to the user on Telegram. Reply warmly and briefly. Never return empty text. If they ask you to do something a tool can do, CALL THE TOOL — don't say you can't.",
           messages: [{ role: "user", content: userText }],
+          tools: filterTools(
+            {
+              ...skills,
+              ...makeUserScopedSkills(email),
+              ...reminderSkill.tools,
+              ...byoTools,
+              linkedin_post: makeLinkedInSkill(email),
+            },
+            allowed,
+          ),
+          stopWhen: stepCountIs(10),
+          providerOptions: { openai: { parallelToolCalls: false } },
         });
         reply = retry.text.trim();
-        console.log(`[telegram-chat] retry reply-len=${reply.length}`);
+        // Log retry tool calls so we know if it actually used them.
+        const retryTools: string[] = [];
+        for (const step of retry.steps ?? []) {
+          for (const call of step.toolCalls ?? []) if (call?.toolName) retryTools.push(call.toolName);
+        }
+        console.log(`[telegram-chat] retry reply-len=${reply.length} tools=[${retryTools.join(",")}]`);
       } catch (err) {
         console.error("[telegram-chat] retry threw:", err);
       }
