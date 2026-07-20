@@ -82,7 +82,7 @@ export function SignInForms({ callbackUrl }: { callbackUrl: string }) {
     <div className="space-y-3">
       {stage === "phone" && (
         <>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Enter your phone number in international format. We&apos;ll send a
             6-digit code to your WhatsApp.
           </p>
@@ -91,19 +91,34 @@ export function SignInForms({ callbackUrl }: { callbackUrl: string }) {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+447700900123"
-            className="w-full px-3 py-2 rounded-lg border border-border bg-background font-mono text-sm"
+            className={`w-full px-3 py-3 rounded-lg border bg-background font-mono text-base ${
+              error ? "border-red-500/60" : "border-border"
+            }`}
             disabled={busy}
             onKeyDown={(e) => {
               if (e.key === "Enter") sendCode();
             }}
             autoFocus
           />
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          <p className="text-[11px] text-muted-foreground">
+            Include your country code: <span className="font-mono">+44</span> UK, <span className="font-mono">+91</span> India, <span className="font-mono">+1</span> US.
+          </p>
+          {error && (
+            <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+              {error}
+            </div>
+          )}
+          {/*
+            Intentionally NOT disabling on `!phone`. Users on some mobile
+            browsers see a disabled button and assume the site is broken
+            before they've even finished typing. Let them click, then
+            validate on click.
+          */}
           <button
             type="button"
             onClick={sendCode}
-            disabled={busy || !phone}
-            className="w-full px-4 py-2.5 rounded-lg bg-foreground text-background font-medium hover:opacity-90 disabled:opacity-50"
+            disabled={busy}
+            className="w-full px-4 py-3 rounded-lg bg-foreground text-background font-semibold hover:opacity-90 disabled:opacity-50"
           >
             {busy ? "Sending…" : "Send code on WhatsApp"}
           </button>
