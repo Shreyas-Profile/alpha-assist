@@ -37,7 +37,9 @@ export function PhoneCollector() {
         setError(data.error ?? `HTTP ${res.status}`);
         return;
       }
-      window.location.href = "/chat";
+      // Go via the "which chat is the bot?" explainer, not straight to /chat.
+      // Older users otherwise message the wrong Telegram chat and give up.
+      window.location.href = "/signin/telegram/done";
     } catch (err) {
       setError((err as Error).message || "network error");
     } finally {

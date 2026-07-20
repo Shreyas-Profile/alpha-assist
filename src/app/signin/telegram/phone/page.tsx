@@ -16,12 +16,14 @@ export default async function TelegramPhonePage() {
   const email = session?.user?.email;
   if (!email) redirect("/signin");
 
-  // If they already have a phone on file, skip straight to /chat.
+  // If they already have a phone on file, skip the phone form but still
+  // route via the "which Telegram chat is the bot?" explainer — they just
+  // completed a fresh OAuth and need to know where to actually message me.
   const pref = await prisma.userChannelPref.findUnique({
     where: { userId: email },
     select: { whatsappNumber: true },
   });
-  if (pref?.whatsappNumber) redirect("/chat");
+  if (pref?.whatsappNumber) redirect("/signin/telegram/done");
 
   return (
     <main className="min-h-screen flex items-center justify-center px-6 py-10">
