@@ -116,12 +116,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       // WhatsApp sign-in identities (email = "+<phone>@phone.paperloft.local")
       // need a UserChannelPref row so inbound WhatsApp messages from that
-      // number can be routed back to this account. Upsert-only, never
-      // overwrites an existing pref (user may have set a different phone
-      // via channel_prefs_update in-chat).
-      const m = /^(\+\d+)@phone\.paperloft\.local$/.exec(user.email);
-      if (m) {
-        const phone = m[1];
+      // number can be routed back to this account.
+      const wa = /^(\+\d+)@phone\.paperloft\.local$/.exec(user.email);
+      if (wa) {
+        const phone = wa[1];
         await prisma.userChannelPref
           .upsert({
             where: { userId: user.email },
@@ -133,6 +131,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             update: {},
           })
           .catch((e) => console.error("[auth] channel-pref upsert failed:", e));
+      }
+      // Telegram widget sign-in identities (email = "tg-<chatId>@telegram.paperloft.local")
+      // need telegram_links (so DMs to the bot route to this account) +
+      // user_channel_prefs (so reminders can be delivered here) auto-created.
+      // The phone number is collected in a follow-up step after this event
+      // fires; here we just wire the plumbing that DOES work from the
+      // widget alone (chatId).
+      const tg = /^tg-(\d+)@telegram\.paperloft\.local$/.exec(user.email);
+      if (tg) {
+        const chatId = tg[1];
+        await prisma.telegramLink
+          .upsert({
+            where: { userEmail: user.email },
+            create: {
+              userEmail: user.email,
+              chatId,
+              firstName: user.name ?? null,
+            },
+            update: { chatId },
+          })
+          .catch((e) => console.error("[auth] telegram-link upsert failed:", e));
+        await prisma.userChannelPref
+          .upsert({
+            where: { userId: user.email },
+            create: {
+              userId: user.email,
+              telegramChatId: chatId,
+              defaultChannel: "telegram",
+            },
+            update: { telegramChatId: chatId },
+          })
+          .catch((e) => console.error("[auth] tg channel-pref upsert failed:", e));
       }
     },
   },

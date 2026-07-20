@@ -21,7 +21,11 @@ export function TelegramHandoff() {
       firstName: params.get("first_name") ?? "",
       username: params.get("username") ?? "",
       photoUrl: params.get("photo_url") ?? "",
-      callbackUrl: "/chat",
+      // Route to the phone-collection step. That page immediately checks
+      // whether we already have a phone for this user; if we do, it
+      // redirects straight to /chat. So returning users see no extra step,
+      // first-timers see the phone prompt once.
+      callbackUrl: "/signin/telegram/phone",
     });
   }, [params]);
 

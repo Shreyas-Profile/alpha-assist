@@ -46,16 +46,27 @@ export async function GET(req: Request) {
   const params: Record<string, string> = {};
   url.searchParams.forEach((v, k) => (params[k] = v));
 
+  // Log every call — Next.js standalone doesn't log requests by default,
+  // and this route is invisible when it silently succeeds. Keep the log
+  // short (no hash, no full URL) so it doesn't leak the signature.
+  console.log(
+    `[telegram-login] hit id=${params.id ?? "?"} username=${params.username ?? "?"} hasHash=${!!params.hash} hasAuthDate=${!!params.auth_date}`,
+  );
+
   if (!params.id || !params.hash || !params.auth_date) {
+    console.log(`[telegram-login] reject: missing_params`);
     return signInError("telegram_missing_params");
   }
   if (!verify(params)) {
+    console.log(`[telegram-login] reject: bad_signature id=${params.id}`);
     return signInError("telegram_bad_signature");
   }
   const authDate = Number(params.auth_date);
   if (!Number.isFinite(authDate) || Date.now() / 1000 - authDate > AUTH_WINDOW_SECONDS) {
+    console.log(`[telegram-login] reject: expired id=${params.id} authDate=${authDate}`);
     return signInError("telegram_expired");
   }
+  console.log(`[telegram-login] accept id=${params.id} → handoff /signin/telegram`);
 
   // Hand off to a tiny client page that calls signIn("telegram", {…}) with
   // the validated info. NextAuth handles cookie setting from that.
