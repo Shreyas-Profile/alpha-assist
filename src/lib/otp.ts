@@ -51,17 +51,36 @@ export type SendResult =
  * Send an OTP to the user via the chosen channel. Both providers use the
  * user's phone number; Telegram needs a prior TelegramPhoneMap row (created
  * when the user taps "Share my phone number" in the bot).
+ *
+ * WhatsApp two-message pattern: real users have reported OTPs silently
+ * dropping (wasender returns success, WhatsApp's spam classifier discards
+ * the message before delivery). Our OTP template — "Your <brand> sign-in
+ * code is XXXXXX. Expires in 10 minutes." — hits every classic OTP-spam
+ * pattern. Sending a short human-sounding intro FIRST, then the code as a
+ * follow-up, looks less like a templated blast and helps a chunk of
+ * recipients get through. Trade-off: 2 wasender API calls per OTP instead
+ * of 1. The intro is best-effort; if it fails we still send the code.
  */
 export async function sendOtp(
   provider: OtpProvider,
   phone: string,
   code: string,
 ): Promise<SendResult> {
-  const body = `Your Paperloft Assist sign-in code is ${code}. It expires in 10 minutes.`;
   if (provider === "whatsapp") {
-    const res = await sendWhatsApp(phone, body);
+    // Best-effort intro. Don't block the flow on it — if wasender is offline
+    // or the send fails, we still try the code below and let that failure
+    // surface to the user.
+    await sendWhatsApp(phone, "Hey! Paperloft Assist here 👋").catch(() => undefined);
+    // Gap between the two sends. wasenderapi enforces "1 message every 5s"
+    // globally (account protection); anything under that hard-errors the
+    // second send. 5500ms gives a small margin. Yes this makes sign-up feel
+    // a touch slow, but a slow-arriving code beats a dropped one.
+    await new Promise((r) => setTimeout(r, 5500));
+    const codeBody = `Your code: ${code}\n\nType it back into the sign-in page to finish. Expires in 10 min.`;
+    const res = await sendWhatsApp(phone, codeBody);
     return res.ok ? { ok: true } : { ok: false, reason: res.reason ?? "wasender failed" };
   }
+  const body = `Your Paperloft Assist sign-in code is ${code}. It expires in 10 minutes.`;
   // Telegram: resolve chatId from the verified phone map.
   const map = await prisma.telegramPhoneMap.findUnique({ where: { phone } });
   if (!map) {
