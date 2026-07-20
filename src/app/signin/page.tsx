@@ -113,6 +113,53 @@ export default async function SignInPage({
             </li>
           </ol>
 
+          <details className="group rounded-lg border border-border bg-foreground/[0.02] px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium select-none list-none flex items-center justify-between">
+              <span>How do I find my phone number in Telegram?</span>
+              <span className="text-muted-foreground text-xs group-open:rotate-180 transition">▾</span>
+            </summary>
+            <div className="pt-2 space-y-3 text-sm text-muted-foreground">
+              <p>
+                Handy if you want to double-check which number your Telegram
+                account uses — or share it with someone.
+              </p>
+              <div>
+                <p className="font-medium text-foreground">
+                  On iPhone or Android
+                </p>
+                <ol className="list-decimal list-outside pl-5 mt-1 space-y-1">
+                  <li>Open Telegram.</li>
+                  <li>
+                    Tap <span className="italic">Settings</span> (bottom-right
+                    on iPhone; the ☰ menu → Settings on Android).
+                  </li>
+                  <li>
+                    Your phone number is shown right under your name at the
+                    top of the screen (e.g. <span className="font-mono">+44 7404 660489</span>).
+                  </li>
+                </ol>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">
+                  On the desktop app or web.telegram.org
+                </p>
+                <ol className="list-decimal list-outside pl-5 mt-1 space-y-1">
+                  <li>Click the ☰ menu (top-left).</li>
+                  <li>
+                    Click <span className="italic">Settings</span> →{" "}
+                    <span className="italic">Edit Profile</span>.
+                  </li>
+                  <li>Your number is at the top of that panel.</li>
+                </ol>
+              </div>
+              <p className="text-[11px]">
+                Paperloft doesn&apos;t receive your Telegram phone number
+                automatically. If you want reminders sent to WhatsApp too,
+                you&apos;ll link it separately in Settings after signing in.
+              </p>
+            </div>
+          </details>
+
           <div className="flex flex-col sm:flex-row gap-2 pt-1">
             <a
               href="https://apps.apple.com/app/telegram-messenger/id686449807"
