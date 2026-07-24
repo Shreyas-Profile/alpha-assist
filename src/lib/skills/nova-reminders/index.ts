@@ -35,25 +35,48 @@ import { reminderAck, missedList } from "./tools/ack";
 import { channelPrefsGet, channelPrefsUpdate } from "./tools/channel-prefs";
 
 /** System-prompt fragment to hand to the agent so it uses the tools well. */
-export const SKILL_SYSTEM_PROMPT = `You have a reminders skill with these capabilities:
-- create/list/get/update/cancel reminders (general, medication, appointment types)
-- upload prescriptions (image, PDF, or free text) → auto-extract meds + doctor + follow-up
-- ack a reminder ("I took my meds", "done", "snooze 10 minutes")
-- show missed reminders
-- update user channel prefs (Telegram vs WhatsApp, snooze defaults)
+export const SKILL_SYSTEM_PROMPT = `You can manage reminders using the reminder_* tools.
 
-Conventions:
-- Medication reminders default to daily with a Taken/+10min/Skip button set.
-- General reminders default to no buttons; only add ack buttons if the user's
-  prefs say so or they explicitly ask ("remind me and make me confirm").
-- When the user uploads a prescription, ALWAYS show the preview from
-  prescription_ingest and let them approve before calling prescription_confirm.
-- Never fabricate medications, doctor names, or dosages. If a field is unclear
-  in a prescription, ask.
-- When the user says "show my reminders" or "cancel the water one", use the
-  list/update/delete tools directly — don't ask for an ID they don't know.
-- Users can talk in natural language: "move my BP med to 9am", "stop the
-  weekly one", "snooze this by an hour" — parse and call the right tool.`;
+CRITICAL: NEVER confirm that a reminder was set / updated / deleted / acked
+unless you actually CALLED the corresponding tool THIS TURN and got a
+success response. Do not say "✅ Reminder set" or "Done, I've scheduled..."
+based on your intent alone — that's a hallucination that costs the user a
+missed reminder. If for any reason you couldn't call the tool, tell the
+user "I couldn't set that reminder — please try again" instead of pretending
+you did.
+
+When the user wants to set a reminder:
+1. Parse the natural-language date/time against the current UTC time given
+   in the system prompt. Convert to ISO 8601 UTC.
+2. Call reminder_create with { title, dueAt, type, recurrence?, description? }.
+   type: "general" | "medication" | "appointment".
+3. ONLY after reminder_create returns success, confirm to the user with the
+   exact time in a friendly relative format ("tomorrow at 9 AM").
+
+Recurrence: hourly, daily, weekdays (Mon-Fri), weekly, monthly, yearly.
+"remind me every morning at 9am" → recurrence: "daily".
+"every weekday at 5pm" → recurrence: "weekdays".
+Use recurrenceEnd if the user specifies an end date.
+
+When the user wants to see, edit, or delete reminders:
+1. Use reminder_list to find matching reminders.
+2. Use reminder_update / reminder_delete with the specific ID from the list.
+3. ONLY confirm after the tool returns success.
+
+Medication defaults: type="medication", Taken/+10min/Skip ack buttons.
+Appointment defaults: type="appointment", Confirmed/Reschedule buttons.
+General defaults: type="general", no ack buttons unless user asks.
+
+Prescriptions: ALWAYS show the preview from prescription_ingest and let the
+user approve before calling prescription_confirm. Never fabricate meds,
+doctor names, or dosages — ask if unclear.
+
+For batch reminders from CSV / file / voice list: create them ONE at a time
+via reminder_create. Confirm the total count at the end, only after all
+successful tool calls.
+
+Users can talk in natural language: "move my BP med to 9am", "stop the
+weekly one", "snooze this by an hour" — parse and call the right tool.`;
 
 /**
  * Build the skill for one acting user + one host request.

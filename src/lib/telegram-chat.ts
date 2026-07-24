@@ -5,8 +5,13 @@
 // calls the LLM with the user's enabled skills wired as tools, persists both
 // sides, returns the reply text so the webhook can DM it back.
 //
-// Tools are gated by the user's /skills toggles (same as web). Multi-step
-// tool loops are capped by stopWhen so we don't hang the webhook.
+// Reliability tweaks vs the naive setup:
+//   * stopWhen 8 (was 25). Nova uses 5 — Haiku wanders if given too much rope.
+//   * Anti-hallucination post-check: if the reply text says a reminder was
+//     set / updated / deleted BUT reminder_* wasn't in the tool-call list
+//     for this turn, retry with `toolChoice: "required"` to force a real
+//     tool call. Real bug we hit: Haiku said "✅ Reminder set" four times
+//     for one user; only one actually made it to the DB.
 
 import { generateText, stepCountIs, type ModelMessage } from "ai";
 import { prisma } from "./db";
@@ -22,10 +27,17 @@ import { makeUserByoSkills, listByoToolNames } from "./user-skills";
 
 const HISTORY_LIMIT = 20;
 const TELEGRAM_MAX_CHARS = 4000; // Telegram's cap is 4096; leave headroom.
+const STEP_CAP = 8; // was 25 — Haiku hallucinates confirmations if given too many silent steps.
 
 const CONNECT_HINT =
   "You're not linked to a Paperloft account yet.\n\n" +
   "Open https://paperloft.uk/settings and hit 'Connect Telegram bot' to link this chat to your account. Then message me here and I'll reply as your assistant.";
+
+// Reply-text patterns that indicate the model CLAIMED to have persisted a
+// reminder. If we see these but no reminder_* tool was actually called this
+// turn, that's a hallucination — retry with a forced tool call.
+const REMINDER_CLAIM_RE =
+  /\b(reminder\s+(?:is\s+)?(?:set|created|scheduled|updated|deleted|removed|cancell?ed|already\s+(?:set|scheduled|created))|(?:set|scheduled|created|updated|deleted|cancell?ed).*reminder|i(?:'?ve| have)\s+(?:set|scheduled|created|updated|deleted|cancell?ed)\s+(?:a\s+)?reminder|✅\s*reminder|done[^.!?]*reminder|i'?ll\s+remind\s+you|already\s+(?:set|scheduled|created)\s+(?:for|to)|that\s+reminder\s+is\s+already)\b/i;
 
 function filterTools<T extends Record<string, unknown>>(
   allTools: T,
@@ -85,10 +97,6 @@ export async function handleTelegramMessage(
   const enabled = await listEnabledSkills(email);
   const allowed = toolsForEnabledSkills(enabled);
 
-  // BYO skills — same wiring as the web /chat route. Fetch the tool
-  // factory + the allowed-name set in parallel and merge both into the
-  // filter. Namespacing (`byo_<slug>__<tool>`) is done inside
-  // makeUserByoSkills so BYO tool names can never collide with built-ins.
   const [byoTools, byoNames] = await Promise.all([
     makeUserByoSkills(email),
     listByoToolNames(email),
@@ -100,81 +108,120 @@ export async function handleTelegramMessage(
     `When the user says relative times ("tomorrow 9am", "in 2 hours", "tonight 8pm"), ` +
     `resolve them against this timestamp and convert to ISO 8601 UTC before calling any tool.`;
 
+  const systemPrompt =
+    timeContext + "\n\n" +
+    SYSTEM_PROMPT +
+    (enabled.has("reminders") ? "\n\n" + reminderSkill.systemPrompt : "") +
+    "\n\nYou are speaking to the user on Telegram. Keep replies short and readable on a phone. Telegram supports basic markdown (**bold**, `code`) but not headings or tables." +
+    "\n\nWhen you need to interact with a live web page (search flights, check prices, click through anything JS-rendered), call `browser_navigate` first, then `browser_snapshot`, then act on the uids. Do NOT tell the user you 'tried a search' unless you actually called those tools." +
+    "\n\nSite hints for flights: our browser runs from a Hetzner IP in Germany, so google.com puts a cookie consent wall in front of Google Flights. Prefer `https://www.skyscanner.net/`, `https://www.kayak.co.uk/flights`, or `https://www.momondo.co.uk/` — same data, no consent wall. Momondo often shows headline 'from £X' prices even in the initial HTML, so `fetch_url` on it can work as a fast fallback if the browser gets stuck.";
+
+  const toolBundle = filterTools(
+    {
+      ...skills,
+      ...makeUserScopedSkills(email),
+      ...reminderSkill.tools,
+      ...byoTools,
+      linkedin_post: makeLinkedInSkill(email),
+    },
+    allowed,
+  );
+
   let reply: string;
+  let mainToolCalls: string[] = [];
   try {
     const result = await generateText({
       model: openrouter.chat(CHAT_MODEL),
-      system:
-        timeContext + "\n\n" +
-        SYSTEM_PROMPT +
-        (enabled.has("reminders") ? "\n\n" + reminderSkill.systemPrompt : "") +
-        "\n\nYou are speaking to the user on Telegram. Keep replies short and readable on a phone. Telegram supports basic markdown (**bold**, `code`) but not headings or tables." +
-        "\n\nWhen you need to interact with a live web page (search flights, check prices, click through anything JS-rendered), call `browser_navigate` first, then `browser_snapshot`, then act on the uids. Do NOT tell the user you 'tried a search' unless you actually called those tools." +
-        "\n\nSite hints for flights: our browser runs from a Hetzner IP in Germany, so google.com puts a cookie consent wall in front of Google Flights. Prefer `https://www.skyscanner.net/`, `https://www.kayak.co.uk/flights`, or `https://www.momondo.co.uk/` — same data, no consent wall. Momondo often shows headline 'from £X' prices even in the initial HTML, so `fetch_url` on it can work as a fast fallback if the browser gets stuck.",
+      system: systemPrompt,
       messages,
-      tools: filterTools(
-        {
-          ...skills,
-          ...makeUserScopedSkills(email),
-          ...reminderSkill.tools,
-          ...byoTools,
-          linkedin_post: makeLinkedInSkill(email),
-        },
-        allowed,
-      ),
-      // 5 was the old cap and it wasn't enough — a browser workflow (new tab,
-      // snapshot, click, snapshot, type, snapshot, click, read) burns ~8
-      // steps easily, then the model returned empty text and users saw
-      // "(no reply)". 25 gives real headroom without letting a runaway loop
-      // hammer the LLM budget.
-      stopWhen: stepCountIs(25),
-      providerOptions: {
-        openai: { parallelToolCalls: false },
-      },
+      tools: toolBundle,
+      stopWhen: stepCountIs(STEP_CAP),
+      providerOptions: { openai: { parallelToolCalls: false } },
     });
     reply = result.text.trim();
-    // Always log which tools were actually called this turn — diagnostic for
-    // "did the model fabricate a success?" bugs.
-    const toolCalls: string[] = [];
     for (const step of result.steps ?? []) {
       for (const call of step.toolCalls ?? []) {
-        if (call?.toolName) toolCalls.push(call.toolName);
+        if (call?.toolName) mainToolCalls.push(call.toolName);
       }
     }
-    console.log(`[telegram-chat] chat=${chatId} tools=[${toolCalls.join(",")}] reply-len=${reply.length}`);
-    // If the model returned no text but DID call tools, don't drop them on
-    // the floor with "(no reply)" — surface what actually happened.
-    if (!reply && toolCalls.length === 0) {
-      // Haiku returns empty when the conversation history contains prior
-      // fallback/refusal turns — pattern-matches and mimics. Retry with
-      // ONLY the current user message + a shorter system, BUT keep the
-      // skill tools + skill prompts. Previous version stripped tools and
-      // caused the bot to hallucinate "I can't set reminders" (Pawan bug).
+    console.log(
+      `[telegram-chat] chat=${chatId} tools=[${mainToolCalls.join(",")}] reply-len=${reply.length}`,
+    );
+
+    // Anti-hallucination: reply claims a reminder was set/updated but no
+    // reminder_* tool actually fired this turn → retry forcing a tool call.
+    // This is the M REVATI bug — Haiku said "✅ Reminder set" 4 times for
+    // one user and only 1 actually persisted.
+    const claimedReminder = REMINDER_CLAIM_RE.test(reply);
+    const calledReminder = mainToolCalls.some((t) => t.startsWith("reminder_"));
+    if (claimedReminder && !calledReminder && enabled.has("reminders")) {
+      console.warn(
+        `[telegram-chat] hallucination caught — claimed reminder without calling tool. Retrying with forced tool call.`,
+      );
+      try {
+        const retry = await generateText({
+          model: openrouter.chat(CHAT_MODEL),
+          system:
+            systemPrompt +
+            "\n\nYou MUST call reminder_create EXACTLY ONCE this turn for the single reminder the user just asked for. The previous attempt confirmed without actually calling the tool. Do NOT loop or create duplicates — one reminder_create call, then a short one-line confirmation.",
+          // Retry with ONLY the current user message. Stale conversation
+          // history contains prior hallucinated "Done! I've set..." replies
+          // that make Haiku think the reminder is already there, so it
+          // refuses to call the tool again. Latest message only, clean slate.
+          messages: [{ role: "user", content: userText }],
+          tools: toolBundle,
+          // stopWhen: 1 truly caps at one step (one model call, up to one
+          // tool call, stop). Anything higher lets Haiku loop reminder_create
+          // even with toolChoice:required — seen creating 2-5 dupes.
+          // The retry.text will be empty (no summary step); we fall back to
+          // the original main-call reply text below, which usually already
+          // says "Done, set for X" — now truthful since the retry actually
+          // persisted it.
+          stopWhen: stepCountIs(1),
+          toolChoice: "required",
+          providerOptions: { openai: { parallelToolCalls: false } },
+        });
+        const retryCalls: string[] = [];
+        for (const step of retry.steps ?? []) {
+          for (const call of step.toolCalls ?? []) {
+            if (call?.toolName) retryCalls.push(call.toolName);
+          }
+        }
+        console.log(
+          `[telegram-chat] retry-forced tools=[${retryCalls.join(",")}] reply-len=${retry.text.trim().length}`,
+        );
+        if (retryCalls.some((t) => t.startsWith("reminder_"))) {
+          reply = retry.text.trim() || reply;
+          mainToolCalls = retryCalls;
+        } else {
+          // Retry also failed to call the tool — tell the user honestly.
+          reply =
+            "I couldn't get the reminder saved just now — something on my end. Please tell me the reminder again ('remind me to X at Y') and I'll try once more.";
+        }
+      } catch (err) {
+        console.error("[telegram-chat] forced-retry threw:", err);
+        reply =
+          "I couldn't get the reminder saved just now — please try again in a moment.";
+      }
+    }
+
+    // Empty-reply recovery (pre-existing bug): Haiku returns empty text when
+    // the conversation history has prior refusal/fallback turns and pattern-
+    // matches. Retry with clean history + tools intact.
+    if (!reply && mainToolCalls.length === 0) {
       console.warn(`[telegram-chat] empty reply — retrying clean-history`);
       try {
         const retry = await generateText({
           model: openrouter.chat(CHAT_MODEL),
           system:
-            timeContext + "\n\n" +
-            SYSTEM_PROMPT +
-            (enabled.has("reminders") ? "\n\n" + reminderSkill.systemPrompt : "") +
-            "\n\nYou are speaking to the user on Telegram. Reply warmly and briefly. Never return empty text. If they ask you to do something a tool can do, CALL THE TOOL — don't say you can't. For relative times ('in 30 min', '2 days from now', 'tomorrow 9am', 'next Monday'), resolve them against the Current UTC time above and convert to ISO 8601 UTC before calling reminder_create.",
+            systemPrompt +
+            "\n\nReply warmly and briefly. Never return empty text. If they ask you to do something a tool can do, CALL THE TOOL — don't say you can't.",
           messages: [{ role: "user", content: userText }],
-          tools: filterTools(
-            {
-              ...skills,
-              ...makeUserScopedSkills(email),
-              ...reminderSkill.tools,
-              ...byoTools,
-              linkedin_post: makeLinkedInSkill(email),
-            },
-            allowed,
-          ),
-          stopWhen: stepCountIs(10),
+          tools: toolBundle,
+          stopWhen: stepCountIs(STEP_CAP),
           providerOptions: { openai: { parallelToolCalls: false } },
         });
         reply = retry.text.trim();
-        // Log retry tool calls so we know if it actually used them.
         const retryTools: string[] = [];
         for (const step of retry.steps ?? []) {
           for (const call of step.toolCalls ?? []) if (call?.toolName) retryTools.push(call.toolName);
@@ -185,10 +232,10 @@ export async function handleTelegramMessage(
       }
     }
     if (!reply) {
-      reply = toolCalls.length
-        ? `I called ${toolCalls.length} tool(s) but got tangled up before I could summarise. Try naming the site or step you want me to try.`
+      reply = mainToolCalls.length
+        ? `I called ${mainToolCalls.length} tool(s) but got tangled up before I could summarise. Try naming the site or step you want me to try.`
         : `Hey! 👋 I got your message. Try asking me something concrete like "remind me to call mum at 8pm" or "search flights London to Delhi Friday".`;
-      console.warn(`[telegram-chat] final fallback fired (toolCalls=${toolCalls.length})`);
+      console.warn(`[telegram-chat] final fallback fired (toolCalls=${mainToolCalls.length})`);
     }
   } catch (err) {
     console.error("[telegram-chat] generateText threw:", err);
