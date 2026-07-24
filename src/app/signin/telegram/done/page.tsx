@@ -23,7 +23,11 @@ export default async function TelegramDonePage() {
   if (!session?.user) redirect("/signin");
 
   const botUsername = process.env.TELEGRAM_BOT_USERNAME ?? "PaperloftAssistantBot";
-  const botDeepLink = `https://t.me/${botUsername}`;
+  // ?start=welcome puts a "Start" button in Telegram when the user opens the
+  // chat. Tapping it sends /start to our bot, which is how Telegram unlocks
+  // bot-initiated DMs (bots can't DM users who haven't messaged them first).
+  // Without this step reminders + welcome messages silently fail.
+  const botDeepLink = `https://t.me/${botUsername}?start=welcome`;
 
   return (
     <main className="min-h-screen flex items-center justify-center px-6 py-10">
@@ -32,19 +36,31 @@ export default async function TelegramDonePage() {
           <div className="w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-500 flex items-center justify-center text-2xl mx-auto">
             ✓
           </div>
-          <h1 className="text-2xl font-semibold">You&apos;re all set!</h1>
+          <h1 className="text-2xl font-semibold">You&apos;re signed in!</h1>
           <p className="text-muted-foreground text-sm">
-            I just sent you a welcome message on Telegram.
+            One quick last step so I can message you on Telegram.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-3">
+          <p className="text-sm font-semibold">
+            📱 Tap Start in Telegram — required
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Telegram doesn&apos;t let bots message you until you say hi first.
+            Tap the button below → Telegram opens my chat → hit the big{" "}
+            <span className="font-medium text-foreground">Start</span>{" "}
+            button. I&apos;ll reply instantly and we&apos;re set — reminders,
+            notifications, everything.
           </p>
         </div>
 
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 space-y-3">
           <p className="text-sm font-semibold">
-            ⚠️ Important: which chat to talk to me in
+            ⚠️ Two Paperloft-related chats will show up in Telegram
           </p>
           <p className="text-sm text-muted-foreground">
-            When you open Telegram, you&apos;ll see <strong>two</strong> chats
-            related to Paperloft:
+            When you open Telegram, you&apos;ll see:
           </p>
           <div className="space-y-3 text-sm">
             <div className="flex gap-3 items-start">

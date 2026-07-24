@@ -57,10 +57,30 @@ export async function POST(
         console.error("[tg-webhook] handleLinkNonce threw:", err),
       );
     } else {
-      await sendTelegramToChatId(
-        chatId,
-        "👋 This is the Paperloft Assist bot.\n\nTo connect this Telegram to your Paperloft account, open Settings → Connect Telegram on paperloft.uk and follow the button.\n\nAlready connected? Just ask me anything.",
-      ).catch(() => undefined);
+      // Plain /start. If this chatId is already linked (widget sign-in
+      // already ran events.signIn and created the row), send the welcome
+      // DM we couldn't send at sign-in time (bot-chat privacy blocks
+      // bot-initiated DMs until the user messages us first — /start counts).
+      const link = await prisma.telegramLink
+        .findFirst({ where: { chatId } })
+        .catch(() => null);
+      if (link) {
+        const firstName = link.firstName ?? msg.from?.first_name ?? "there";
+        const welcome =
+          `👋 Hi ${firstName}! You're all set up.\n\n` +
+          `I'm your Paperloft Assistant. You can chat with me here on Telegram OR on paperloft.uk — same brain, same memory.\n\n` +
+          `Try one of these to get started:\n\n` +
+          `• "Remind me to call mum at 8pm"\n` +
+          `• "What flights are there from London to Delhi on Friday?"\n` +
+          `• "Every Monday at 9am, summarise what happened last week"\n\n` +
+          `Or just tell me what you want done — I'll figure it out.`;
+        await sendTelegramToChatId(chatId, welcome).catch(() => undefined);
+      } else {
+        await sendTelegramToChatId(
+          chatId,
+          "👋 This is the Paperloft Assist bot.\n\nYou're not signed in yet. Open https://paperloft.uk/signin and tap 'Log in with Telegram' first, then come back here.",
+        ).catch(() => undefined);
+      }
     }
     return NextResponse.json({ ok: true });
   }

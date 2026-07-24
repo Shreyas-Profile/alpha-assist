@@ -170,10 +170,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           })
           .catch((e) => console.error("[auth] tg channel-pref upsert failed:", e));
         if (isFirstTime) {
-          // Fire-and-forget welcome DM. Users (especially older ones) need
-          // concrete proof the bot is wired up + a nudge on what to try
-          // first. Otherwise they land on /chat, don't know what to say,
-          // and drop off.
+          // Try to send a welcome DM. This WILL fail for users who've never
+          // messaged @PaperloftAssistantBot before — Telegram bots can't
+          // initiate a conversation until the user has messaged the bot at
+          // least once (bot-chat privacy). The /signin/telegram/done page
+          // catches this by prompting the user to tap Start on the bot; on
+          // the first message received, the bot-webhook route will send this
+          // same welcome as a reply and future DMs will work.
           const firstName = user.name?.split(/\s+/)[0] ?? "there";
           const welcome =
             `👋 Hi ${firstName}! I'm your Paperloft Assistant.\n\n` +
@@ -184,7 +187,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             `• "Every Monday at 9am, summarise what happened last week"\n\n` +
             `Or just tell me what you want done — I'll figure it out.`;
           const { sendTelegramToChatId } = await import("./telegram-bot");
-          void sendTelegramToChatId(chatId, welcome).catch(() => undefined);
+          const res = await sendTelegramToChatId(chatId, welcome).catch(
+            (e) => ({ ok: false as const, reason: String(e) }),
+          );
+          if (!res.ok) {
+            // Almost always "Forbidden: bot can't initiate conversation with a user"
+            // — new users have never messaged us. Log explicitly so we know.
+            console.warn(
+              `[auth] welcome DM to chatId=${chatId} failed: ${res.reason}. User needs to /start the bot first — the done page prompts for that.`,
+            );
+          }
         }
       }
     },

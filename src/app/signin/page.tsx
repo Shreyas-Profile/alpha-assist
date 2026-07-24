@@ -136,12 +136,12 @@ export default async function SignInPage({
         </details>
 
         <p className="text-[11px] text-muted-foreground text-center">
-          Stuck? Message me on WhatsApp:{" "}
+          Stuck? Email me:{" "}
           <a
-            href="https://wa.me/447404660489"
+            href="mailto:shreyas.pavuluri@gmail.com"
             className="underline hover:text-foreground"
           >
-            +44 7404 660489
+            shreyas.pavuluri@gmail.com
           </a>
           .
         </p>
