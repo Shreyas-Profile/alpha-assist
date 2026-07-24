@@ -1,22 +1,20 @@
 // Dedicated sign-in page. Auth.js redirects here when someone hits a
-// protected route without a session.
+// protected route without a session. Telegram-only sign-in.
 //
-// Hybrid sign-in:
-//   1. WhatsApp phone-OTP as the primary path — familiar and low-friction
-//      for users who've done phone-OTP a hundred times before. Delivery
-//      via wasenderapi with the intro-then-code pattern in otp.ts to keep
-//      out of WhatsApp's spam classifier as best we can.
-//   2. Telegram Login Widget as the fallback — one tap, no delivery
-//      required, kicks in either from the "or use Telegram instead" link
-//      on the phone screen or the "Didn't get the code?" nudge on the OTP
-//      screen. Never fails silently.
+// WhatsApp OTP was removed after real users repeatedly got stuck on
+// wasenderapi session drops — the Baileys-based provider silently accepts
+// sends and later fails to deliver, leaving users with no way to sign in
+// even when their code exists in the DB. Telegram Login Widget doesn't
+// rely on OTP delivery at all — Telegram authenticates the user in their
+// app / web session and hands us a signed payload directly. No drops.
 //
-// The Telegram widget's HMAC verify + NextAuth handoff still live at
-// /api/auth/telegram-login → /signin/telegram/handoff, unchanged.
+// (WhatsApp Credentials provider stays defined in auth.ts as a code-level
+// backdoor so any lingering JWTs keep working — the UI just doesn't
+// surface it.)
 
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { SignInForms } from "./signin-forms";
+import { TelegramLoginButton } from "./telegram-login-button";
 
 export default async function SignInPage({
   searchParams,
@@ -25,13 +23,9 @@ export default async function SignInPage({
 }) {
   const session = await auth();
   if (session?.user) redirect("/chat");
-  const { callbackUrl = "/chat", error } = await searchParams;
+  const { error } = await searchParams;
 
   const botUsername = process.env.TELEGRAM_BOT_USERNAME;
-  // Absolute callback URL for the Telegram widget. The widget silently
-  // ignores relative URLs and defaults to the current page, which would
-  // route the signed callback to /signin (no verifier there) instead of
-  // /api/auth/telegram-login. AUTH_URL is our canonical origin.
   const authBase = (process.env.AUTH_URL ?? "https://paperloft.uk").replace(
     /\/$/,
     "",
@@ -47,7 +41,7 @@ export default async function SignInPage({
           </div>
           <h1 className="text-2xl font-semibold">Sign in to Paperloft</h1>
           <p className="text-muted-foreground text-sm">
-            Sign in with WhatsApp or Telegram — whichever&apos;s easier.
+            One tap to sign in with Telegram. No passwords, no OTPs.
           </p>
         </div>
 
@@ -57,11 +51,23 @@ export default async function SignInPage({
           </div>
         ) : null}
 
-        <SignInForms
-          callbackUrl={callbackUrl}
-          telegramBotUsername={botUsername}
-          telegramAuthUrl={telegramAuthUrl}
-        />
+        {botUsername ? (
+          <div className="space-y-3">
+            <TelegramLoginButton
+              botUsername={botUsername}
+              authUrl={telegramAuthUrl}
+            />
+            <p className="text-xs text-center text-muted-foreground">
+              Tap the blue Telegram button above. Telegram will open, ask you
+              to confirm, and bring you back signed in.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-500">
+            Telegram sign-in isn&apos;t configured on this server
+            (TELEGRAM_BOT_USERNAME missing). Contact the admin.
+          </div>
+        )}
 
         <details className="group rounded-lg border border-border bg-foreground/[0.02] px-3 py-2">
           <summary className="cursor-pointer text-sm font-medium select-none list-none flex items-center justify-between">
