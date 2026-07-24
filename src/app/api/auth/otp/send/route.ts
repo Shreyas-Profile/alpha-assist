@@ -45,10 +45,22 @@ export async function POST(req: Request) {
   if (!send.ok) {
     console.warn(`[otp/send] delivery failed for ${provider} → ${phone}: ${send.reason}`);
     // 428 = "you need to do something first" — the UI catches this and shows
-    // the bot deep-link instead of a plain error. 422 for everything else so
-    // Cloudflare doesn't eat the body (5xx does).
-    const status = send.needsBotStart ? 428 : 422;
-    return NextResponse.json({ error: send.reason }, { status });
+    // the bot deep-link instead of a plain error.
+    if (send.needsBotStart) {
+      return NextResponse.json({ error: send.reason }, { status: 428 });
+    }
+    // For every other send failure (session offline, invalid number, generic
+    // wasender error): the CODE IS ALREADY IN THE DB. Wasender sometimes lies
+    // about failure and delivers late, and the user still has a valid code to
+    // enter if they happen to receive it (via any channel). Return 200 with a
+    // `deliveryUncertain` flag so the client advances to the code-entry
+    // stage AND surfaces the Telegram fallback prominently. Never leave the
+    // user stranded on the phone screen with no way forward.
+    return NextResponse.json({
+      ok: true,
+      deliveryUncertain: true,
+      warning: send.reason,
+    });
   }
   return NextResponse.json({ ok: true });
 }

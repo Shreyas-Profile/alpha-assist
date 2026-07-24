@@ -54,6 +54,10 @@ export function SignInForms({
   // "Didn't get the code" nudge appears prominently after N seconds so we
   // don't leave the user stranded when wasender silently drops the SMS.
   const [showTgNudge, setShowTgNudge] = useState(false);
+  // If wasender is offline / the send fails, surface the Telegram fallback
+  // prominently right on the phone screen — don't leave the user stranded
+  // with just an error message.
+  const [sendFailed, setSendFailed] = useState(false);
   const nudgeTimer = useRef<number | null>(null);
   useEffect(() => {
     if (stage !== "code" || mode !== "whatsapp") return;
@@ -66,6 +70,7 @@ export function SignInForms({
   const sendCode = async () => {
     setError(null);
     setInfo(null);
+    setSendFailed(false);
     const p = phone.trim();
     if (p === "" || p === DEFAULT_DIAL_CODE || !/^\+[1-9]\d{6,14}$/.test(p)) {
       setError(
@@ -82,15 +87,33 @@ export function SignInForms({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: "whatsapp", phone: p }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        deliveryUncertain?: boolean;
+        warning?: string;
+      };
       if (!res.ok) {
         setError(data.error ?? `HTTP ${res.status}`);
+        setSendFailed(true);
         return;
       }
+      // Advance to code stage even if delivery was uncertain — the code is
+      // in the DB and wasender sometimes lies about failure. If they got it,
+      // they can enter it; if not, the "Use Telegram instead" nudge on the
+      // code stage catches them.
       setStage("code");
-      setInfo(`Code sent to ${p} on WhatsApp. Check your chats.`);
+      if (data.deliveryUncertain) {
+        setSendFailed(true);
+        setInfo(
+          `WhatsApp delivery is uncertain right now (${data.warning ?? "provider issue"}). If the code arrives on ${p}, enter it below. Otherwise, use Telegram — button below.`,
+        );
+        setShowTgNudge(true); // Push the amber nudge immediately, don't wait 30s
+      } else {
+        setInfo(`Code sent to ${p} on WhatsApp. Check your chats.`);
+      }
     } catch (err) {
       setError((err as Error).message || "network error");
+      setSendFailed(true);
     } finally {
       setBusy(false);
     }
@@ -233,7 +256,13 @@ export function SignInForms({
       {stage === "code" && (
         <>
           {info && (
-            <div className="rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-500">
+            <div
+              className={`rounded border px-3 py-2 text-xs ${
+                sendFailed
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
+              }`}
+            >
               {info}
             </div>
           )}

@@ -52,14 +52,13 @@ export type SendResult =
  * user's phone number; Telegram needs a prior TelegramPhoneMap row (created
  * when the user taps "Share my phone number" in the bot).
  *
- * WhatsApp two-message pattern: real users have reported OTPs silently
- * dropping (wasender returns success, WhatsApp's spam classifier discards
- * the message before delivery). Our OTP template — "Your <brand> sign-in
- * code is XXXXXX. Expires in 10 minutes." — hits every classic OTP-spam
- * pattern. Sending a short human-sounding intro FIRST, then the code as a
- * follow-up, looks less like a templated blast and helps a chunk of
- * recipients get through. Trade-off: 2 wasender API calls per OTP instead
- * of 1. The intro is best-effort; if it fails we still send the code.
+ * WhatsApp: single-message delivery. Previous version sent an "intro"
+ * message first, waited 5.5s, then sent the code — the theory was that
+ * two conversational messages would sneak past WhatsApp's spam filter.
+ * In practice it doubled our API failure surface and hit a real bug where
+ * the wasender session dropped in the 5.5s gap, leaving users with just
+ * "Hey!" and no code. Reverted to one message. The friendly casual phrasing
+ * still avoids classic OTP-spam patterns.
  */
 export async function sendOtp(
   provider: OtpProvider,
@@ -67,16 +66,7 @@ export async function sendOtp(
   code: string,
 ): Promise<SendResult> {
   if (provider === "whatsapp") {
-    // Best-effort intro. Don't block the flow on it — if wasender is offline
-    // or the send fails, we still try the code below and let that failure
-    // surface to the user.
-    await sendWhatsApp(phone, "Hey! Paperloft Assist here 👋").catch(() => undefined);
-    // Gap between the two sends. wasenderapi enforces "1 message every 5s"
-    // globally (account protection); anything under that hard-errors the
-    // second send. 5500ms gives a small margin. Yes this makes sign-up feel
-    // a touch slow, but a slow-arriving code beats a dropped one.
-    await new Promise((r) => setTimeout(r, 5500));
-    const codeBody = `Your code: ${code}\n\nType it back into the sign-in page to finish. Expires in 10 min.`;
+    const codeBody = `Hey! 👋 Your Paperloft code is ${code}\n\nType it back into the sign-in page to finish. Expires in 10 min.`;
     const res = await sendWhatsApp(phone, codeBody);
     return res.ok ? { ok: true } : { ok: false, reason: res.reason ?? "wasender failed" };
   }
